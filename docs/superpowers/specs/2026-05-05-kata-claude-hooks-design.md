@@ -14,7 +14,9 @@ The key behavior is feedback, not automation-at-all-costs:
 - On `TaskCompleted`, the hook can block completion with exit code `2` and tell Claude to update, comment on, or close the corresponding kata issue first.
 - If kata has not been initialized for the workspace, the hook should notify Claude that the user needs to run `kata init`; it must not run `kata init` automatically.
 
-Claude Code's hook reference documents that command hooks receive event JSON on stdin. `TaskCreated` and `TaskCompleted` do not support matchers, always fire, and both treat exit code `2` as a blocking feedback path where stderr is fed back to Claude. See `https://code.claude.com/docs/en/hooks#taskcreated`.
+Claude Code's hook reference documents that command hooks receive event JSON on stdin. `TaskCreated` and `TaskCompleted` do not support matchers, always fire, and both treat exit code `2` as a blocking feedback path where stderr is fed back to Claude.
+
+**Claude schema source:** this design is pinned to the Claude Code hooks reference fetched on 2026-05-05 from `https://code.claude.com/docs/en/hooks#taskcreated`. The implementation plan must add fixtures copied from that documentation for both task events and treat fixture drift as an explicit design update, not an incidental test tweak.
 
 ## 2. Non-goals
 
@@ -27,7 +29,7 @@ Claude Code's hook reference documents that command hooks receive event JSON on 
 
 ## 3. CLI surface
 
-Add a new provider-specific subcommand under the existing hooks namespace:
+Add a new top-level `hooks` namespace with a provider-specific Claude subcommand:
 
 ```text
 kata hooks claude install --scope local [--force]
@@ -35,7 +37,7 @@ kata hooks claude install --scope global [--force]
 kata hooks claude run
 ```
 
-This keeps `kata hooks` as the home for external automation integrations, while `claude` names the concrete provider.
+This makes `kata hooks` the home for external automation integrations, while `claude` names the concrete provider. The existing kata hook runtime remains internal plus `kata daemon logs --hooks`; there is no pre-existing top-level `kata hooks` command to preserve.
 
 ### 3.1 `kata hooks claude install`
 
@@ -45,13 +47,15 @@ Flags:
 
 - `--scope local`: install into the current workspace's `.claude/settings.local.json`.
 - `--scope global`: install into `~/.claude/settings.json`.
-- `--force`: replace existing kata-managed Claude hook handlers if their command shape changed.
+- `--force`: replace existing kata-managed Claude hook handlers if their command shape changed or if the installed executable path differs from the current `kata` binary.
 
 The command should require exactly one scope. If no scope is provided, return a usage error. The default is deliberately explicit because global installation affects every Claude Code project.
 
 For local install, the target workspace is resolved from `--workspace` or cwd. The command creates `<workspace>/.claude/` if needed, but it does not require `kata init`; installation is just Claude settings wiring. Runtime hook evaluation is where project initialization matters.
 
 For global install, the command writes `~/.claude/settings.json`.
+
+The installer resolves the current kata executable with `os.Executable`, makes it absolute, and prefers the symlink-resolved path when possible. If the executable path cannot be resolved or does not exist, installation fails with a validation error. The installed Claude command uses that absolute executable path, quoted for shell safety, so Claude Code does not need `kata` on `PATH`.
 
 ### 3.2 `kata hooks claude run`
 
@@ -79,8 +83,9 @@ Installed shape:
         "hooks": [
           {
             "type": "command",
-            "command": "kata hooks claude run",
-            "timeout": 10
+            "command": "\"/absolute/path/to/kata\" hooks claude run",
+            "timeout": 10,
+            "statusMessage": "kata Claude hook"
           }
         ]
       }
@@ -90,8 +95,9 @@ Installed shape:
         "hooks": [
           {
             "type": "command",
-            "command": "kata hooks claude run",
-            "timeout": 10
+            "command": "\"/absolute/path/to/kata\" hooks claude run",
+            "timeout": 10,
+            "statusMessage": "kata Claude hook"
           }
         ]
       }
@@ -102,13 +108,20 @@ Installed shape:
 
 `TaskCreated` and `TaskCompleted` ignore matcher fields, so the installer should not add matchers for those events.
 
-The installer identifies kata-managed handlers by command string. A second install is idempotent: it should not duplicate handlers. With `--force`, existing kata-managed handlers are replaced by the current canonical handler object.
+The installer identifies kata-managed handlers by a managed marker and known command shapes:
 
-The command string is intentionally `kata hooks claude run`, not a generated shell script path. That keeps logic in Go, keeps upgrades simple, and lets tests exercise exactly the code Claude will execute.
+- Primary marker: `type == "command"` and `statusMessage == "kata Claude hook"`.
+- Compatibility marker for pre-marker installs: command strings equal to `kata hooks claude run`, or command strings whose shell words end in `hooks claude run`.
+
+A second install is idempotent: if exactly the canonical handler is present, it does not duplicate handlers. If a kata-managed handler is present but differs from the canonical handler, install fails with a validation message explaining to rerun with `--force`; with `--force`, it replaces all kata-managed handlers for that event with one canonical handler. Unrelated handlers are preserved.
+
+The command string is intentionally an absolute `kata` executable plus `hooks claude run`, not a generated shell script path. That keeps logic in Go, avoids relying on Claude's `PATH`, keeps upgrades simple, and lets tests exercise exactly the code Claude will execute.
 
 ## 5. Runtime input contract
 
 The runtime command accepts the common Claude hook fields plus task-specific fields:
+
+`TaskCreated` fixture:
 
 ```json
 {
@@ -125,7 +138,31 @@ The runtime command accepts the common Claude hook fields plus task-specific fie
 }
 ```
 
-For kata's behavior, `hook_event_name` and `task_subject` are required on task events. `cwd` is preferred for project resolution but may be empty, in which case the runtime falls back to the process cwd. `task_id` is accepted and retained for diagnostics, but v1 does not require it because issue correlation is text-reference based. Optional strings should default to empty. Unknown fields are ignored so the integration survives Claude Code schema additions.
+`TaskCompleted` fixture:
+
+```json
+{
+  "session_id": "abc123",
+  "transcript_path": "/Users/.../.claude/projects/.../session.jsonl",
+  "cwd": "/Users/.../repo",
+  "permission_mode": "default",
+  "hook_event_name": "TaskCompleted",
+  "task_id": "task-001",
+  "task_subject": "Implement user authentication",
+  "task_description": "Add login and signup endpoints",
+  "teammate_name": "implementer",
+  "team_name": "my-project"
+}
+```
+
+For kata's behavior, `hook_event_name` and `task_subject` are required on task events. `cwd` is preferred for project resolution but may be empty, in which case the runtime falls back to the process cwd. `task_id` is accepted and retained for diagnostics, but v1 does not require it because issue correlation is text-reference based.
+
+String fields from Claude are decoded defensively:
+
+- Missing optional strings become empty strings.
+- JSON `null` for optional strings becomes empty string.
+- Unknown extra fields are ignored so the integration survives Claude Code schema additions.
+- A non-string `task_subject` or non-string `hook_event_name` is invalid input.
 
 Malformed JSON or missing required fields is a kata validation error. Because this is a hook runtime, the user-facing form should be concise and emitted on stderr. The exit code should follow kata's normal validation convention, not Claude's block code, because malformed input is an operator/configuration problem rather than model feedback.
 
@@ -151,7 +188,9 @@ The hook does not create a project, derive a project identity, write `.kata.toml
 
 Other resolution errors are operational failures. They should surface as normal kata errors rather than Claude-facing task guidance.
 
-## 7. Issue reference rule
+The hook timeout is 10 seconds. Runtime behavior should be fast enough for a warm daemon path. If daemon auto-start or project resolution exceeds the timeout, Claude Code will terminate the command; the installer cannot guarantee a polished stderr in that case. To reduce cold-start risk, the runtime should use the existing CLI daemon ensure path and the default `KATA_HTTP_TIMEOUT`, but the design does not add a hook-specific longer timeout because these hooks run in Claude's task lifecycle and should not stall it for long periods.
+
+## 7. Issue reference and lookup rule
 
 V1 uses explicit issue references in Claude task text instead of a persistent mapping table.
 
@@ -166,7 +205,7 @@ The scan is intentionally conservative:
 - The issue number must be a positive integer.
 - False positives are acceptable only when the text is clearly issue-like. If this proves noisy, implementation can tighten to require the `kata #123` form first, while still accepting bare `#123` as a compatibility fallback.
 
-When an issue number is found, the runtime should verify that the issue exists in the resolved project before giving issue-specific guidance. A missing issue is treated like no usable reference: Claude is told to find or create the correct kata issue.
+When an issue number is found, the runtime verifies that the issue exists in the resolved project by using the same daemon API path as `kata show`: `GET /api/v1/projects/{project_id}/issues/{number}`. The response's `issue.status` field determines whether `TaskCompleted` allows completion (`closed`) or blocks with update/close guidance (`open`). A 404 `issue_not_found` is treated like no usable reference: Claude is told to find or create the correct kata issue. Other lookup failures are operational errors.
 
 ## 8. `TaskCreated` behavior
 
@@ -266,7 +305,17 @@ Rules:
 6. Avoid duplicate kata handler entries.
 7. With `--force`, replace existing kata handler entries with the canonical handler object.
 
+Invalid existing Claude hook shapes are handled narrowly:
+
+- If top-level `hooks` is absent, create it.
+- If top-level `hooks` exists but is not an object, fail and do not overwrite it.
+- If `hooks.TaskCreated` or `hooks.TaskCompleted` is absent, create the event array.
+- If either event key exists but is not an array, fail and do not overwrite it.
+- If a matcher group under either event lacks a `hooks` array, preserve it as unrelated config and append a new canonical matcher group. This avoids trying to repair arbitrary user config while still allowing kata installation.
+
 The write should be atomic: write a temporary file in the same directory, fsync if the local helper pattern exists in the repo, then rename.
+
+New settings files are created with mode `0600`. Existing settings files keep their current permission bits when rewritten; the temp file should be chmodded to the existing mode before rename.
 
 ## 13. Security and safety
 
@@ -286,20 +335,43 @@ Unit tests:
 - Existing unrelated hooks survive install.
 - Re-running install does not duplicate kata handlers.
 - `--force` replaces old kata handler shape.
+- The installer writes an absolute, shell-quoted executable path and does not rely on `kata` being on `PATH`.
+- The installer detects kata-managed handlers by `statusMessage` marker and known legacy command strings.
 - Malformed settings JSON is not overwritten.
+- Non-object top-level `hooks` fails without overwrite.
+- Non-array `TaskCreated` / `TaskCompleted` fails without overwrite.
+- Matcher groups with invalid nested `hooks` shape are preserved while a new canonical group is appended.
+- New settings files are mode `0600`; existing settings files keep their original permissions.
+- Atomic write failure paths preserve the original file where practical to simulate.
 - Runtime rejects malformed stdin as validation.
 - Runtime exits `0` for unknown hook events.
+- Runtime fixture tests cover the documented 2026-05-05 Claude `TaskCreated` and `TaskCompleted` payloads.
+- Runtime fixture tests cover missing `cwd`, missing or empty `task_description`, JSON `null` optional string fields, and unknown extra fields.
 - Runtime returns exit `2` with init guidance on `project_not_initialized`.
 - `TaskCreated` exits `0` when `kata #N` resolves.
 - `TaskCreated` exits `2` when no issue reference exists.
+- `TaskCreated` exits `2` when an issue-looking reference does not resolve.
 - `TaskCompleted` exits `2` when a referenced issue is open.
 - `TaskCompleted` exits `0` when a referenced issue is already closed.
+- `TaskCompleted` exits `2` when the referenced issue is missing.
 
 End-to-end tests:
 
 - Install local hook into a temporary workspace and assert the settings file shape.
 - Run hook fixtures through `kata hooks claude run` against an initialized test project.
 
-## 15. Open follow-up
+## 15. Implementation stages
+
+Implement this in reviewable slices:
+
+1. CLI skeleton: add `kata hooks` and `kata hooks claude` command wiring with help text and no runtime behavior beyond argument validation.
+2. Settings installer: resolve absolute executable path, merge Claude settings, preserve unrelated config, implement ownership detection and `--force`.
+3. Runtime parser: decode documented Claude fixtures, defensive optional string handling, unknown event allow path, validation errors.
+4. Project resolution: resolve project from hook `cwd`, handle `project_not_initialized` as Claude-facing exit `2`, surface other errors normally.
+5. Issue lookup: parse `kata #N` / `#N`, call `GET /api/v1/projects/{project_id}/issues/{number}`, classify open/closed/missing.
+6. Event behavior: implement `TaskCreated` and `TaskCompleted` blocking guidance.
+7. End-to-end coverage: install local hook config and run real fixture payloads against an initialized test project.
+
+## 16. Open follow-up
 
 A future version may add a durable mapping from Claude `task_id` to kata issue UID. V1 avoids that storage because Claude task IDs are only useful inside Claude's task system, while explicit `kata #N` references are visible, portable, and easy for agents and humans to repair.
