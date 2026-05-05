@@ -395,3 +395,9 @@ Implement this in reviewable slices:
 ## 16. Open follow-up
 
 A future version may add richer natural-language matching for already-existing kata issues. It should still avoid using Claude `task_id` as durable identity: Claude task IDs are only useful inside Claude's task system, while explicit `kata #N` references are visible, portable, and easy for agents and humans to repair.
+
+## 17. Open question
+
+Should `TaskCreated` create/reuse the kata issue itself, or should it only exit `2` with instructions telling Claude how to create the issue with kata?
+
+Current design chooses create/reuse because it gives Claude a concrete `kata #N` in the feedback message and avoids a second model decision about command shape. The alternative is a purer steering hook: block the Claude task and tell Claude to run `kata create ...`, leaving all mutation intent visible in Claude's next tool call. The implementation plan should settle this before coding the runtime behavior.
