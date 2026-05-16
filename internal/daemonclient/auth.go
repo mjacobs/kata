@@ -46,9 +46,19 @@ func resolveAuthToken() string {
 // but the daemon's middleware ignores the header on those paths. We
 // inject unconditionally so a single transport works for discovery
 // probes, normal API calls, and SSE streams alike.
+//
+// origin is the scheme://host captured at client construction time. The
+// token is attached only when req.URL still targets that origin; redirects
+// to any other origin lose the token. checkBearerTargetSafeURL alone
+// accepts any https:// URL as safe, so without origin pinning a daemon
+// (or attacker-influenced discovery / base URL) redirecting to
+// https://attacker.example would leak the bearer over the wire even
+// though the redirected request "looks safe" by transport-encryption
+// alone.
 type bearerTransport struct {
-	base  http.RoundTripper
-	token string
+	base   http.RoundTripper
+	token  string
+	origin string
 }
 
 func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -64,6 +74,11 @@ func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := checkBearerTargetSafeURL(req.URL); err != nil {
 		return nil, err
 	}
+	if reqOrigin := req.URL.Scheme + "://" + req.URL.Host; reqOrigin != t.origin {
+		return nil, fmt.Errorf("refusing to attach bearer token to %q — "+
+			"client is bound to daemon origin %q; cross-origin redirects "+
+			"are blocked to prevent token leakage", reqOrigin, t.origin)
+	}
 	clone := req.Clone(req.Context())
 	clone.Header.Set("Authorization", "Bearer "+t.token)
 	return t.base.RoundTrip(clone)
@@ -73,30 +88,32 @@ func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // non-empty. When token is empty the base transport is returned
 // unchanged so the no-auth daemon deployments incur zero extra cost.
 // A nil base falls back to http.DefaultTransport — matching net/http's
-// own zero-value behavior when *http.Client.Transport is nil.
-func withBearer(base http.RoundTripper, token string) http.RoundTripper {
+// own zero-value behavior when *http.Client.Transport is nil. origin
+// is the scheme://host the bearer is pinned to (see bearerTransport).
+func withBearer(base http.RoundTripper, token, origin string) http.RoundTripper {
 	if token == "" {
 		return base
 	}
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	return &bearerTransport{base: base, token: token}
+	return &bearerTransport{base: base, token: token, origin: origin}
 }
 
 // checkBearerTargetSafe refuses to attach a bearer token to a baseURL that
-// would put the token on the wire in cleartext. Thin wrapper over
-// checkBearerTargetSafeURL that accepts a string base URL — used at client
-// construction time to fail fast before any request is built.
-func checkBearerTargetSafe(baseURL string) error {
-	if strings.HasPrefix(baseURL, UnixBase) {
-		return nil
-	}
+// would put the token on the wire in cleartext, and returns the scheme://host
+// origin the bearer should be pinned to for subsequent requests. Thin wrapper
+// over checkBearerTargetSafeURL that accepts a string base URL — used at
+// client construction time to fail fast before any request is built.
+func checkBearerTargetSafe(baseURL string) (string, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return fmt.Errorf("parse base URL %q for bearer-token safety check: %w", baseURL, err)
+		return "", fmt.Errorf("parse base URL %q for bearer-token safety check: %w", baseURL, err)
 	}
-	return checkBearerTargetSafeURL(u)
+	if err := checkBearerTargetSafeURL(u); err != nil {
+		return "", err
+	}
+	return u.Scheme + "://" + u.Host, nil
 }
 
 // unixSentinelHost is the host portion of UnixBase — the synthetic value

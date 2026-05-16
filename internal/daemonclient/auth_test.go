@@ -56,7 +56,7 @@ func TestBearerTransportInjectsHeader(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := &http.Client{Transport: withBearer(http.DefaultTransport, "secret")}
+	c := &http.Client{Transport: withBearer(http.DefaultTransport, "secret", srv.URL)}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 	require.NoError(t, err)
 	resp, err := c.Do(req) //nolint:gosec // G704: srv.URL is the test's own httptest.Server
@@ -74,7 +74,7 @@ func TestBearerTransportNoTokenPassthrough(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	rt := withBearer(http.DefaultTransport, "")
+	rt := withBearer(http.DefaultTransport, "", srv.URL)
 	assert.Equal(t, http.DefaultTransport, rt,
 		"empty token must return the base transport unchanged")
 
@@ -96,7 +96,7 @@ func TestBearerTransportPreservesCallerHeader(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := &http.Client{Transport: withBearer(http.DefaultTransport, "from-transport")}
+	c := &http.Client{Transport: withBearer(http.DefaultTransport, "from-transport", srv.URL)}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer caller-supplied")
@@ -114,7 +114,7 @@ func TestBearerTransportDoesNotMutateRequest(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := &http.Client{Transport: withBearer(http.DefaultTransport, "secret")}
+	c := &http.Client{Transport: withBearer(http.DefaultTransport, "secret", srv.URL)}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 	require.NoError(t, err)
 	resp, err := c.Do(req) //nolint:gosec // G704: srv.URL is the test's own httptest.Server
@@ -232,9 +232,18 @@ func TestNewHTTPClient_AllowsBearerOverHTTPS(t *testing.T) {
 // the bearer-attachment code path — so a regression in the UnixBase
 // branch of checkBearerTargetSafe would have been masked. Hitting the
 // helper directly makes the coverage unambiguous.
+//
+// The returned origin is the scheme+host stripped of any path component —
+// path-bearing baseURLs must normalize to the same origin so the per-request
+// pin matches regardless of which API path triggered the check.
 func TestCheckBearerTargetSafe_UnixBase(t *testing.T) {
-	require.NoError(t, checkBearerTargetSafe(UnixBase))
-	require.NoError(t, checkBearerTargetSafe(UnixBase+"/api/v1/ping"))
+	origin, err := checkBearerTargetSafe(UnixBase)
+	require.NoError(t, err)
+	assert.Equal(t, UnixBase, origin)
+
+	origin, err = checkBearerTargetSafe(UnixBase + "/api/v1/ping")
+	require.NoError(t, err)
+	assert.Equal(t, UnixBase, origin)
 }
 
 // TestNewHTTPClient_NoTokenSkipsSafetyCheck verifies the gate is
@@ -255,7 +264,7 @@ func TestNewHTTPClient_NoTokenSkipsSafetyCheck(t *testing.T) {
 // pointed at a plaintext non-loopback URL must be refused before the
 // token reaches the wire.
 func TestBearerTransport_RefusesPlaintextNonLoopbackPerRequest(t *testing.T) {
-	rt := withBearer(http.DefaultTransport, "secret")
+	rt := withBearer(http.DefaultTransport, "secret", "http://127.0.0.1:7373")
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
 		"http://example.invalid:7373/api/v1/ping", nil)
 	require.NoError(t, err)
@@ -278,7 +287,7 @@ func TestBearerTransport_BlocksTokenOnRedirectToPlaintextNonLoopback(t *testing.
 	}))
 	t.Cleanup(srv.Close)
 
-	c := &http.Client{Transport: withBearer(http.DefaultTransport, "secret")}
+	c := &http.Client{Transport: withBearer(http.DefaultTransport, "secret", srv.URL)}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 	require.NoError(t, err)
 	resp, err := c.Do(req) //nolint:gosec // G704: srv.URL is the test's own httptest.Server
@@ -287,6 +296,54 @@ func TestBearerTransport_BlocksTokenOnRedirectToPlaintextNonLoopback(t *testing.
 	}
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "plaintext")
+}
+
+// TestBearerTransport_RefusesCrossOriginPerRequest pins the origin-binding
+// guard in bearerTransport.RoundTrip directly: the transport is constructed
+// against one origin, and a request to any other origin (even one that
+// passes the HTTPS / loopback safety check on its own) must be refused
+// before the token reaches the wire.
+func TestBearerTransport_RefusesCrossOriginPerRequest(t *testing.T) {
+	rt := withBearer(http.DefaultTransport, "secret", "https://daemon.example")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+		"https://attacker.example/api/v1/ping", nil)
+	require.NoError(t, err)
+	resp, err := rt.RoundTrip(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cross-origin")
+	assert.Contains(t, err.Error(), "attacker.example")
+	assert.Contains(t, err.Error(), "daemon.example")
+}
+
+// TestBearerTransport_BlocksTokenOnCrossOriginHTTPSRedirect is the
+// regression test for the finding the HTTPS-only safety check missed:
+// the trusted daemon (or an attacker-influenced base URL) 302-redirects
+// to https://attacker.example. checkBearerTargetSafeURL accepts both
+// hosts as "safe transport," so without origin pinning the redirected
+// request would carry Authorization: Bearer <token> to the attacker.
+// With origin pinning, the redirected RoundTrip refuses and never
+// dials the attacker host at all.
+func TestBearerTransport_BlocksTokenOnCrossOriginHTTPSRedirect(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://attacker.example/api/v1/ping", http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	base := srv.Client().Transport
+	c := &http.Client{Transport: withBearer(base, "secret", srv.URL)}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	resp, err := c.Do(req) //nolint:gosec // G704: srv.URL is the test's own httptest.Server
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cross-origin",
+		"redirect to a different HTTPS origin must be refused, not silently followed with bearer")
+	assert.Contains(t, err.Error(), "attacker.example")
 }
 
 // writeAuthConfig writes a config.toml with [auth].token = tok under home.
