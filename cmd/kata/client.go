@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/daemonclient"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/daemonclient"
 )
 
 // defaultHTTPTimeout is the per-request budget for non-streaming CLI calls.

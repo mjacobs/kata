@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/db"
 )
 
 // Env is a per-test daemon + DB + HTTP client bundle.

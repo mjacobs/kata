@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 // ExportOptions controls which rows are exported.

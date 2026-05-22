@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wesm/kata/internal/db"
-	katauid "github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/db"
+	katauid "go.kenn.io/kata/internal/uid"
 )
 
 // ImportOptions controls optional import behaviors.

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wesm/kata/internal/daemon"
+	"go.kenn.io/kata/internal/daemon"
 )
 
 // UnixBase is the synthetic base URL used when the daemon listens on a Unix
@@ -87,11 +87,11 @@ func Ping(ctx context.Context, client *http.Client, base string) bool {
 
 // Probe returns the daemon identity from GET base+/api/v1/ping.
 func Probe(ctx context.Context, client *http.Client, base string) (PingInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v1/ping", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v1/ping", nil) //nolint:gosec // G704: base built from our own runtime file
 	if err != nil {
 		return PingInfo{}, err
 	}
-	resp, err := client.Do(req) //nolint:gosec // G107: base built from our own runtime file
+	resp, err := client.Do(req) //nolint:gosec // G704: base built from our own runtime file
 	if err != nil {
 		return PingInfo{}, err
 	}

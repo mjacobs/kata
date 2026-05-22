@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/wesm/kata/internal/shortid"
+	"go.kenn.io/kata/internal/shortid"
 )
 
 // assignShortID returns the smallest-length short_id (>= shortid.MinLength)

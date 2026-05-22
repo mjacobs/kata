@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	katauid "github.com/wesm/kata/internal/uid"
+	katauid "go.kenn.io/kata/internal/uid"
 )
 
 // SoftDeleteIssue sets deleted_at on the issue and emits issue.soft_deleted.

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 // mustNewDispatcher builds a Dispatcher rooted at a fresh temp KataHome with

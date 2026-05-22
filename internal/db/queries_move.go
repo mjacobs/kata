@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wesm/kata/internal/shortid"
+	"go.kenn.io/kata/internal/shortid"
 )
 
 // CrossProjectLinksError is returned by MoveIssueProject when the issue

@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/daemon"
+	"go.kenn.io/kata/internal/daemon"
 )
 
 // assertEndpointRoundTrip verifies that a listener and dialer endpoint

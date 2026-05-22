@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
-	"github.com/wesm/kata/internal/textsafe"
+	"go.kenn.io/kata/internal/textsafe"
 )
 
 // viewChrome carries the cross-cutting render inputs that lm.View

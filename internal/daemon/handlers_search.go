@@ -6,7 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/wesm/kata/internal/api"
+	"go.kenn.io/kata/internal/api"
 )
 
 // registerSearchHandlers installs GET /api/v1/projects/{id}/search. Returns

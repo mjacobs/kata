@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 func TestIssue_HasShortIDFieldAndNoNumber(t *testing.T) {

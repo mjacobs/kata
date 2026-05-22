@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wesm/kata/internal/api"
+	"go.kenn.io/kata/internal/api"
 )
 
 // isHexSHA reports whether s is 7-40 lowercase or uppercase hex characters,

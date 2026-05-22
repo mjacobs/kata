@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 func TestDaemonE2E_TokenRequired_MissingHeader_401(t *testing.T) {

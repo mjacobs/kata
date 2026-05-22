@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/uid"
 )
 
 // MinLength is the smallest short_id length the auto-extend algorithm

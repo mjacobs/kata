@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/daemon"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/daemon"
 )
 
 // setupMockEnv creates a temp dir and points $KATA_HOME and $KATA_DB at it

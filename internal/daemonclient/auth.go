@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/config"
 )
 
 // resolveAuthToken returns the auth token a client should attach to

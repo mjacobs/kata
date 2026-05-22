@@ -12,7 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/term"
 
-	"github.com/wesm/kata/internal/daemonclient"
+	"go.kenn.io/kata/internal/daemonclient"
 )
 
 // Options controls TUI behavior. Stable across versions; new fields

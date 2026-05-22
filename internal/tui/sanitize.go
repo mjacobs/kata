@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/wesm/kata/internal/textsafe"
+import "go.kenn.io/kata/internal/textsafe"
 
 // sanitizeForDisplay is the TUI-side alias for textsafe.Block — strips
 // ANSI escape sequences, Unicode control characters, and Cf bidi

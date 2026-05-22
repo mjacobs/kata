@@ -1,4 +1,4 @@
-module github.com/wesm/kata
+module go.kenn.io/kata
 
 go 1.26.3
 

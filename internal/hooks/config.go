@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/db"
 )
 
 // ResolvedHook is one [[hook]] entry after parsing and validation. The

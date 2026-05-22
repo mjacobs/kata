@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 // readyResp is the decoded shape of a /ready response body, narrowed to the

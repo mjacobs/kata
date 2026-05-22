@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 // Sink is the minimal interface mutation handlers depend on. cfg.Hooks

@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/shortid"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/shortid"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 func TestImportBeadsRejectsInputAndTargetFlags(t *testing.T) {

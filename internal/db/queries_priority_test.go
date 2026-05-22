@@ -1,19 +1,20 @@
 package db_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 func TestCreateIssue_WithInitialPriority(t *testing.T) {
 	d, ctx, p := setupTestProject(t)
 	for _, prio := range []int64{0, 1, 2, 3, 4} {
 		prio := prio
-		t.Run(t.Name()+"_p"+string(rune('0'+prio)), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s_p%d", t.Name(), prio), func(t *testing.T) {
 			issue, evt, err := d.CreateIssue(ctx, db.CreateIssueParams{
 				ProjectID: p.ID, Title: "x", Author: "tester",
 				Priority: &prio,

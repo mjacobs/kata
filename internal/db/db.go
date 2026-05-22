@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver registered as "sqlite"
 
-	katauid "github.com/wesm/kata/internal/uid"
+	katauid "go.kenn.io/kata/internal/uid"
 )
 
 //go:embed schema.sql

@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 // throttledEventRecord captures the close.throttled events returned by the

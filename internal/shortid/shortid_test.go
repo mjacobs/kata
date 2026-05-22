@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/shortid"
+	"go.kenn.io/kata/internal/shortid"
 )
 
 func TestDeriveTakesLowercaseSuffix(t *testing.T) {

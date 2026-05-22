@@ -17,7 +17,7 @@ contracts and UI details may still change before a stable release.
 ## Quick Start
 
 ```sh
-go install github.com/wesm/kata/cmd/kata@latest   # or see Install for other options
+go install go.kenn.io/kata/cmd/kata@latest   # or see Install for other options
 
 cd your-repo
 kata init                                         # bind this workspace to a kata project
@@ -136,7 +136,7 @@ later** (<https://go.dev/dl/>).
 ### `go install` (any platform)
 
 ```sh
-go install github.com/wesm/kata/cmd/kata@latest
+go install go.kenn.io/kata/cmd/kata@latest
 ```
 
 Go places `kata` in `$(go env GOBIN)`, falling back to `$(go env GOPATH)/bin`
@@ -610,7 +610,7 @@ For multi-project backups, take the full-database snapshot shown above
 instead of one file per project. A per-project merge import (apply one
 project's snapshot to an existing database without disturbing other
 projects) is planned — tracked in
-[wesm/kata#42](https://github.com/wesm/kata/issues/42).
+[kenn-io/kata#42](https://github.com/kenn-io/kata/issues/42).
 
 ## Configuration
 

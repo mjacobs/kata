@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/testfix"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/testfix"
 )
 
 func TestResolve_FailsOutsideKataTomlAndWithoutAlias(t *testing.T) {

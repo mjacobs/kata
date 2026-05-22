@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/wesm/kata/internal/api"
+	"go.kenn.io/kata/internal/api"
 )
 
 func newAuditClosesCmd() *cobra.Command {

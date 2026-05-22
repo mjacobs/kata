@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/hooks"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/hooks"
 )
 
 // recordingSink captures every Enqueue for assertion. Lives only in tests;

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/uid"
 )
 
 var fixedTestTime = time.Date(2026, 5, 4, 1, 2, 3, 456_000_000, time.UTC)

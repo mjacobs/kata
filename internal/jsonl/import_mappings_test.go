@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/jsonl"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/jsonl"
 )
 
 func TestExportImport_DeletedIssueOmitsImportMappings(t *testing.T) {

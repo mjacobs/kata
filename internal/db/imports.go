@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	katauid "github.com/wesm/kata/internal/uid"
+	katauid "go.kenn.io/kata/internal/uid"
 )
 
 // ImportBatchParams is the input to ImportBatch: the project receiving the

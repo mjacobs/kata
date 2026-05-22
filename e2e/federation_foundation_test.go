@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wesm/kata/internal/jsonl"
-	"github.com/wesm/kata/internal/testenv"
-	"github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/jsonl"
+	"go.kenn.io/kata/internal/testenv"
+	"go.kenn.io/kata/internal/uid"
 )
 
 // TestSmoke_FederationFoundationV3 covers spec §8.9: full pipeline from a

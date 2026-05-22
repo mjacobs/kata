@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/config"
 )
 
 func writeRuns(t *testing.T, dir string, files map[string][]map[string]any) {

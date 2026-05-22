@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 // digestActor is the per-actor slice in the digest response: totals plus a

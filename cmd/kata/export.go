@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/daemonclient"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/jsonl"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/daemonclient"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/jsonl"
 )
 
 func newExportCmd() *cobra.Command {

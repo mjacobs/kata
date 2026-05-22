@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/version"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/version"
 )
 
 // BaseURLKey is the context key for injecting a daemon base URL during

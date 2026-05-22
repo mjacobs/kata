@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	main "github.com/wesm/kata/cmd/kata"
+	main "go.kenn.io/kata/cmd/kata"
 )
 
 func TestResolveRef_QualifiedSelectsProject(t *testing.T) {

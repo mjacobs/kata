@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/db"
 )
 
 func TestBroadcaster_SubscribeAndUnsubLifecycle(t *testing.T) {

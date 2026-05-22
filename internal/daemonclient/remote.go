@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/daemon"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/daemon"
 )
 
 // remoteServerEnvVar is the environment variable that names a kata

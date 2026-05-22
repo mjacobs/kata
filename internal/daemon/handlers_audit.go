@@ -9,9 +9,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/shortid"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/shortid"
 )
 
 // registerAuditHandlers installs /api/v1/audit/closes, a read-only

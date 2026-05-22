@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/wesm/kata/internal/api"
+	"go.kenn.io/kata/internal/api"
 )
 
 // Test messages are sized to meet the per-reason length floors in spec §3.4

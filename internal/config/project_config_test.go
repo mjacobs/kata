@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/config"
 )
 
 func setupKataProjectDir(t *testing.T, body string) string {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/version"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/version"
 )
 
 // registerHealthHandlers installs /api/v1/ping and /api/v1/health on humaAPI.

@@ -12,9 +12,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/testenv"
-	"github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/testenv"
+	"go.kenn.io/kata/internal/uid"
 )
 
 // TestGetIssue_ResolvesByShortID pins that /api/v1/projects/{pid}/issues/{ref}

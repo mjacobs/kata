@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/textsafe"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/textsafe"
 )
 
 type projectAliasRef struct {

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 // moveURL builds the move action URL for the given source project and issue

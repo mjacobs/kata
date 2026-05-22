@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	katauid "github.com/wesm/kata/internal/uid"
+	katauid "go.kenn.io/kata/internal/uid"
 )
 
 // ErrNotFound is returned when a single-row lookup matches zero rows.

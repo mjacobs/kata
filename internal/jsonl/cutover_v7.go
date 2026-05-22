@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wesm/kata/internal/shortid"
-	katauid "github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/shortid"
+	katauid "go.kenn.io/kata/internal/uid"
 )
 
 // applyCutoverV7toV8 transforms a decoded v7-or-earlier envelope stream into a

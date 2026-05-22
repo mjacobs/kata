@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/daemon"
+	"go.kenn.io/kata/internal/daemon"
 )
 
 func TestRuntimeFile_RoundTripWriteRead(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wesm/kata/internal/similarity"
+	"go.kenn.io/kata/internal/similarity"
 )
 
 // sqliteTimeFormat matches the schema's strftime('%Y-%m-%dT%H:%M:%fZ', ...)

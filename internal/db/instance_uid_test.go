@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/uid"
 )
 
 // TestOpenSeedsInstanceUID covers the §8.2 invariant: a fresh db.Open writes

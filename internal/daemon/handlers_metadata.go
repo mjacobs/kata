@@ -7,9 +7,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/metadata"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/metadata"
 )
 
 // registerMetadataHandlers installs the metadata patch routes.

@@ -11,7 +11,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/config"
 )
 
 // Client is the typed adapter the TUI uses to talk to the daemon. Errors

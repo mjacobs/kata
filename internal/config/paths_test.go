@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/config"
 )
 
 // setupTestHome creates an isolated KATA_HOME for the test and returns its

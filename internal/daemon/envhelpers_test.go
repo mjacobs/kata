@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 // defaultActor is the actor string used by the un-parameterized helpers

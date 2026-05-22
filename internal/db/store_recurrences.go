@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wesm/kata/internal/recurrence"
-	"github.com/wesm/kata/internal/shortid"
-	katauid "github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/recurrence"
+	"go.kenn.io/kata/internal/shortid"
+	katauid "go.kenn.io/kata/internal/uid"
 	sqlite3 "modernc.org/sqlite/lib"
 )
 

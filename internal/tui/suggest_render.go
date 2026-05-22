@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
-	"github.com/wesm/kata/internal/textsafe"
+	"go.kenn.io/kata/internal/textsafe"
 )
 
 // suggestMenuMaxRows caps the menu's visible-entry budget. The

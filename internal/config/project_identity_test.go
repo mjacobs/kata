@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/testfix"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/testfix"
 )
 
 func TestDiscoverPaths_FindsKataTomlAndGit(t *testing.T) {

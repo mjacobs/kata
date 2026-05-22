@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/tui"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/tui"
 )
 
 // newTUICmd registers the TUI command. --all-projects is intentionally

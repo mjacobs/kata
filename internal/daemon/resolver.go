@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/shortid"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/shortid"
 )
 
 // resolveIssueRef parses an URL path component {ref} (short_id, qualified

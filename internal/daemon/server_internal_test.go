@@ -3,7 +3,7 @@ package daemon
 import (
 	"testing"
 
-	"github.com/wesm/kata/internal/hooks"
+	"go.kenn.io/kata/internal/hooks"
 )
 
 // TestServerConfig_NilHooks_FillsNoop verifies NewServer substitutes a

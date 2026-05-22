@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/jsonl"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/jsonl"
 )
 
 func newImportCmd() *cobra.Command {

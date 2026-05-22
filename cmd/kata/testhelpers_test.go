@@ -18,11 +18,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/daemonclient"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/testenv"
-	"github.com/wesm/kata/internal/version"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/daemonclient"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/testenv"
+	"go.kenn.io/kata/internal/version"
 )
 
 // setupKataEnv points KATA_HOME and KATA_DB at a fresh temp dir so the test

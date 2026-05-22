@@ -5,7 +5,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/wesm/kata/internal/api"
+	"go.kenn.io/kata/internal/api"
 )
 
 func registerReadyHandlers(humaAPI huma.API, cfg ServerConfig) {

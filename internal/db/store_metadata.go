@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wesm/kata/internal/metadata"
+	"go.kenn.io/kata/internal/metadata"
 )
 
 // PatchIssueMetadataIn carries inputs for PatchIssueMetadata.

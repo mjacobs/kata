@@ -11,10 +11,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/config"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/hooks"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/config"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/hooks"
 )
 
 // ServerConfig wires the daemon's runtime dependencies. DB and StartedAt are
@@ -131,7 +131,7 @@ func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 	}
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		_ = httpSrv.Shutdown(shutdownCtx)
 	}()

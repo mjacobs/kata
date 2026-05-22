@@ -9,8 +9,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/db"
 )
 
 // registerRecurrencesHandlers installs the five recurrence CRUD routes.

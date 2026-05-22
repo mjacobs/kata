@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/uid"
 )
 
 func TestFingerprint_DeterministicOverInputOrder(t *testing.T) {

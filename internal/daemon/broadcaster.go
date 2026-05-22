@@ -3,7 +3,7 @@ package daemon
 import (
 	"sync"
 
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 // channelBuffer is the per-subscriber send buffer. Full channels trigger

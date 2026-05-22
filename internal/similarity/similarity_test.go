@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/wesm/kata/internal/similarity"
+	"go.kenn.io/kata/internal/similarity"
 )
 
 const epsilon = 1e-9

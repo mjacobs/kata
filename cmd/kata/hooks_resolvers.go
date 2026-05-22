@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/hooks"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/hooks"
 )
 
 // makeProjectResolver returns a hook ProjectResolver backed by the live

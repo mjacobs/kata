@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 func nowZero() time.Time { return time.Date(2026, 4, 30, 14, 22, 11, 482_000_000, time.UTC) }

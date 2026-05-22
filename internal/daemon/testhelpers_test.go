@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/hooks"
-	"github.com/wesm/kata/internal/testenv"
-	"github.com/wesm/kata/internal/testfix"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/hooks"
+	"go.kenn.io/kata/internal/testenv"
+	"go.kenn.io/kata/internal/testfix"
 )
 
 // httptestServerHandle bundles a httptest.Server with the on-disk workspace

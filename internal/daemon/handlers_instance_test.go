@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/testenv"
-	"github.com/wesm/kata/internal/uid"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/testenv"
+	"go.kenn.io/kata/internal/uid"
 )
 
 // TestInstance_ReturnsLocalUID covers spec §8.8: GET /api/v1/instance returns

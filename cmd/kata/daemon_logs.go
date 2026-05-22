@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/config"
 )
 
 // daemonLogsCmd registers `kata daemon logs --hooks ...`. The --hooks

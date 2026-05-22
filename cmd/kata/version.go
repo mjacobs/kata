@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/wesm/kata/internal/version"
+	"go.kenn.io/kata/internal/version"
 
 	"github.com/spf13/cobra"
 )

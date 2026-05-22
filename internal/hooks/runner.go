@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/wesm/kata/internal/db"
+	"go.kenn.io/kata/internal/db"
 )
 
 // runRecord is the JSONL line shape for runs.jsonl. The dispatcher's

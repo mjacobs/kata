@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/config"
 )
 
 // safeBuffer is a bytes.Buffer guarded by a mutex. os/exec writes the
@@ -157,7 +157,7 @@ func shellQuote(s string) string {
 func buildKataBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "kata")
-	build := exec.Command("go", "build", "-o", bin, "github.com/wesm/kata/cmd/kata") //nolint:gosec // G204: fixed args, test-only
+	build := exec.Command("go", "build", "-o", bin, "go.kenn.io/kata/cmd/kata") //nolint:gosec // G204: fixed args, test-only
 	var stderr bytes.Buffer
 	build.Stderr = &stderr
 	require.NoErrorf(t, build.Run(), "go build kata: %s", stderr.String())

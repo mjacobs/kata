@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/wesm/kata/internal/shortid"
+	"go.kenn.io/kata/internal/shortid"
 )
 
 // ResolvedRef is what a CLI command passes to the API: the project

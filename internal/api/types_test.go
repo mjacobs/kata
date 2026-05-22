@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/metadata"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/metadata"
 )
 
 // TestShowIssueResponseHasShortIDAndNoNumber pins the wire-side rename:
@@ -173,7 +173,7 @@ func TestLinksDeltaUsesRefStrings(t *testing.T) {
 			t.Errorf("LinksDelta.%s missing", name)
 			continue
 		}
-		assert.Equalf(t, reflect.Ptr, f.Type.Kind(), "LinksDelta.%s must be *string", name)
+		assert.Equalf(t, "ptr", f.Type.Kind().String(), "LinksDelta.%s must be *string", name)
 		assert.Equalf(t, reflect.String, f.Type.Elem().Kind(), "LinksDelta.%s must be *string", name)
 	}
 	sliceFields := []string{"AddBlocks", "AddBlockedBy", "AddRelated", "RemoveBlocks", "RemoveBlockedBy", "RemoveRelated"}

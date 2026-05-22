@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/wesm/kata/internal/api"
-	"github.com/wesm/kata/internal/config"
+	"go.kenn.io/kata/internal/api"
+	"go.kenn.io/kata/internal/config"
 )
 
 const (

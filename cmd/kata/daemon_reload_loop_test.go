@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/hooks"
+	"go.kenn.io/kata/internal/hooks"
 )
 
 // recordingDispatcher captures Reload calls so the SIGHUP loop test can

@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 // TestProjects_ListJSONHasNoNextIssueNumber pins the spec §9.5 invariant on

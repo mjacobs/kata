@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wesm/kata/internal/daemon"
-	"github.com/wesm/kata/internal/db"
-	"github.com/wesm/kata/internal/testenv"
+	"go.kenn.io/kata/internal/daemon"
+	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/testenv"
 )
 
 // TestSSE_OutOfOrderBroadcastsEmitInIDOrder pins the wakeup-and-requery

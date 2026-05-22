@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/wesm/kata/internal/hooks"
+	"go.kenn.io/kata/internal/hooks"
 )
 
 // reloadable is the small surface runReloadLoop needs from the
