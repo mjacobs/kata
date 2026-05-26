@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -140,7 +141,8 @@ func newLabelsCmd() *cobra.Command {
 			if status >= 400 {
 				return apiErrFromBody(status, bs)
 			}
-			if flags.JSON {
+			mode := currentOutputMode()
+			if mode == outputJSON {
 				var buf bytes.Buffer
 				if err := emitJSON(&buf, json.RawMessage(bs)); err != nil {
 					return err
@@ -157,6 +159,22 @@ func newLabelsCmd() *cobra.Command {
 			if err := json.Unmarshal(bs, &b); err != nil {
 				return err
 			}
+			if mode == outputAgent {
+				out := cmd.OutOrStdout()
+				if _, err := fmt.Fprintf(out, "OK labels count=%d\n", len(b.Labels)); err != nil {
+					return err
+				}
+				for _, c := range b.Labels {
+					count := fmt.Sprint(c.Count)
+					if err := writeAgentKVRow(out,
+						agentRowField("label", c.Label),
+						agentRowField("count", count),
+					); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
 			for _, c := range b.Labels {
 				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%-32s  %d\n", c.Label, c.Count); err != nil {
 					return err
@@ -169,13 +187,26 @@ func newLabelsCmd() *cobra.Command {
 
 // printLabelMutation formats AddLabelResponse for the three output modes.
 func printLabelMutation(cmd *cobra.Command, bs []byte) error {
-	if flags.JSON {
+	mode := currentOutputMode()
+	if mode == outputJSON {
 		var buf bytes.Buffer
 		if err := emitJSON(&buf, json.RawMessage(bs)); err != nil {
 			return err
 		}
 		_, err := fmt.Fprint(cmd.OutOrStdout(), buf.String())
 		return err
+	}
+	if mode == outputAgent {
+		var m agentIssueMutation
+		if err := json.Unmarshal(bs, &m); err != nil {
+			return err
+		}
+		return printAgentMutationDecoded(cmd.OutOrStdout(), "label", m, true, func(w io.Writer, m agentIssueMutation) error {
+			if err := writeAgentField(w, "Label", agentValue(m.Label.Label)); err != nil {
+				return err
+			}
+			return writeAgentField(w, "Action", "added")
+		})
 	}
 	var b struct {
 		Issue struct {
@@ -206,13 +237,26 @@ func printLabelMutation(cmd *cobra.Command, bs []byte) error {
 // body carries only {issue, event, changed} so the line is built from the
 // (issue ref, label) the CLI used to call DELETE.
 func printLabelRemoved(cmd *cobra.Command, bs []byte, ref, label string) error {
-	if flags.JSON {
+	mode := currentOutputMode()
+	if mode == outputJSON {
 		var buf bytes.Buffer
 		if err := emitJSON(&buf, json.RawMessage(bs)); err != nil {
 			return err
 		}
 		_, err := fmt.Fprint(cmd.OutOrStdout(), buf.String())
 		return err
+	}
+	if mode == outputAgent {
+		var m agentIssueMutation
+		if err := json.Unmarshal(bs, &m); err != nil {
+			return err
+		}
+		return printAgentMutationDecoded(cmd.OutOrStdout(), "label", m, true, func(w io.Writer, _ agentIssueMutation) error {
+			if err := writeAgentField(w, "Label", agentValue(label)); err != nil {
+				return err
+			}
+			return writeAgentField(w, "Action", "removed")
+		})
 	}
 	var b struct {
 		Changed bool `json:"changed"`

@@ -17,11 +17,15 @@ import (
 
 // globalFlags carries the universal flags applied on every command.
 type globalFlags struct {
-	JSON      bool
-	Quiet     bool
-	As        string
-	Workspace string
-	Project   string
+	Format       string
+	FormatValues []string
+	JSON         bool
+	Agent        bool
+	Mode         outputMode
+	Quiet        bool
+	As           string
+	Workspace    string
+	Project      string
 }
 
 var flags globalFlags
@@ -30,19 +34,35 @@ var flags globalFlags
 // It stays false when cobra fails during argument/flag parsing, allowing main()
 // to distinguish a parse error (ExitUsage) from an operational failure (ExitInternal).
 var runEEntered bool
+var errorCommandName string
 
 func newRootCmd() *cobra.Command {
+	runEEntered = false
+	flags.Mode = ""
+	errorCommandName = ""
 	cmd := &cobra.Command{
 		Use:           "kata",
 		Short:         "kata — lightweight issue tracker for agents",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			runEEntered = true
+			errorCommandName = commandLeaf(cmd)
+			mode, err := resolveOutputModeForCommand(cmd)
+			if err != nil {
+				return err
+			}
+			flags.Mode = mode
+			if mode == outputJSON {
+				flags.JSON = true
+			}
 			return nil
 		},
 	}
+	cmd.PersistentFlags().Var(outputFormatFlag{value: &flags.Format, values: &flags.FormatValues},
+		"format", "output format: human|json|agent")
 	cmd.PersistentFlags().BoolVar(&flags.JSON, "json", false, "emit machine-readable JSON")
+	cmd.PersistentFlags().BoolVar(&flags.Agent, "agent", false, "emit concise agent-readable text")
 	cmd.PersistentFlags().BoolVarP(&flags.Quiet, "quiet", "q", false, "suppress non-essential output")
 	cmd.PersistentFlags().StringVar(&flags.As, "as", "", "override actor (default: $KATA_AUTHOR > $USER > git > anonymous)")
 	cmd.PersistentFlags().StringVar(&flags.Workspace, "workspace", "", "path used for project resolution (default: cwd)")
@@ -104,24 +124,207 @@ func main() {
 		<-ctx.Done()
 		stop()
 	}()
-	if err := newRootCmd().ExecuteContext(ctx); err != nil {
-		emitError(os.Stderr, err, flags.JSON, runEEntered)
+	cmd := newRootCmd()
+	if err := cmd.ExecuteContext(ctx); err != nil {
+		emitRootError(os.Stderr, cmd, os.Args[1:], err, runEEntered)
 		os.Exit(exitCodeForErr(err, runEEntered))
 	}
 }
 
-// emitError writes the error to w. When jsonMode is true, the output
-// is a JSON envelope shaped after the daemon's ErrorEnvelope plus a
-// `kind` and `exit_code` for client-side classification — agents can
-// branch on a stable taxonomy without grepping the human message.
-// When jsonMode is false, the human path stays "kata: <message>".
-//
-// The JSON envelope is always emitted to stderr (where the human
-// message also goes) so consumers don't have to reconfigure stream
-// routing per --json. Stdout stays reserved for successful command
-// output, so a partial-success run can emit useful stdout JSON and
-// an error envelope on stderr without the streams being mixed.
+// emitError preserves the legacy bool-shaped test/helper API while main uses
+// the resolved output mode.
 func emitError(w io.Writer, err error, jsonMode bool, runEReached bool) {
+	if jsonMode {
+		emitErrorForMode(w, err, outputJSON, runEReached)
+		return
+	}
+	emitErrorForMode(w, err, outputHuman, runEReached)
+}
+
+func emitErrorForMode(w io.Writer, err error, mode outputMode, runEReached bool) {
+	switch mode {
+	case outputJSON:
+		emitJSONError(w, err, runEReached)
+	case outputAgent:
+		emitAgentError(w, commandNameForError(nil, nil, runEReached), cliErrorForErr(err, runEReached))
+	default:
+		emitHumanError(w, err, runEReached)
+	}
+}
+
+func emitRootError(w io.Writer, cmd *cobra.Command, args []string, err error, runEReached bool) {
+	mode, modeErr := resolvedOutputModeForError(cmd, args)
+	if modeErr != nil {
+		err = modeErr
+	}
+	switch mode {
+	case outputAgent:
+		emitAgentError(w, commandNameForError(cmd, args, runEReached), cliErrorForErr(err, runEReached))
+	default:
+		emitErrorForMode(w, err, mode, runEReached)
+	}
+}
+
+func resolvedOutputModeForError(root *cobra.Command, args []string) (outputMode, error) {
+	if flags.Mode != "" {
+		return flags.Mode, nil
+	}
+	importLegacy := false
+	if cmd := commandFromArgs(root, args); isImportCommand(cmd) {
+		importLegacy = true
+	}
+	mode, err := resolveOutputModeArgsForCommand(args, flags.Format, flags.JSON, flags.Agent, importLegacy, root)
+	if err != nil {
+		return outputModeHintForResolutionError(importLegacy), err
+	}
+	return mode, nil
+}
+
+func outputModeHintForResolutionError(importLegacy bool) outputMode {
+	formats := flags.FormatValues
+	if len(formats) == 0 && flags.Format != "" {
+		formats = []string{flags.Format}
+	}
+	selected := make([]outputMode, 0, len(formats)+2)
+	for _, format := range formats {
+		switch mode := outputMode(outputFormatValue(format, importLegacy)); mode {
+		case outputHuman, outputJSON, outputAgent:
+			selected = append(selected, mode)
+		}
+	}
+	if flags.JSON {
+		selected = append(selected, outputJSON)
+	}
+	if flags.Agent {
+		selected = append(selected, outputAgent)
+	}
+	if len(selected) == 0 {
+		return outputHuman
+	}
+	first := selected[0]
+	for _, mode := range selected[1:] {
+		if mode != first {
+			return outputHuman
+		}
+	}
+	return first
+}
+
+func commandNameForError(root *cobra.Command, args []string, runEReached bool) string {
+	if errorCommandName != "" {
+		return errorCommandName
+	}
+	if !runEReached {
+		if cmd := commandFromArgs(root, args); cmd != nil && cmd != root {
+			return commandLeaf(cmd)
+		}
+	}
+	return "kata"
+}
+
+func commandFromArgs(root *cobra.Command, args []string) *cobra.Command {
+	if root == nil {
+		return nil
+	}
+	cmd := root
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			break
+		}
+		if strings.HasPrefix(arg, "-") {
+			if flagArgConsumesValue(cmd, arg) && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		next := childCommandByName(cmd, arg)
+		if next == nil {
+			break
+		}
+		cmd = next
+	}
+	return cmd
+}
+
+func childCommandByName(cmd *cobra.Command, name string) *cobra.Command {
+	if cmd == nil {
+		return nil
+	}
+	for _, child := range cmd.Commands() {
+		if child.Name() == name {
+			return child
+		}
+		for _, alias := range child.Aliases {
+			if alias == name {
+				return child
+			}
+		}
+	}
+	return nil
+}
+
+func flagArgConsumesValue(cmd *cobra.Command, arg string) bool {
+	name := strings.TrimLeft(arg, "-")
+	if eq := strings.IndexByte(name, '='); eq >= 0 {
+		return false
+	}
+	if name == "" {
+		return false
+	}
+	flag := cmd.Flags().Lookup(name)
+	if flag == nil {
+		flag = cmd.PersistentFlags().Lookup(name)
+	}
+	if flag == nil {
+		flag = cmd.InheritedFlags().Lookup(name)
+	}
+	return flag != nil && flag.Value.Type() != "bool"
+}
+
+func commandLeaf(cmd *cobra.Command) string {
+	if cmd == nil {
+		return "kata"
+	}
+	parts := strings.Fields(cmd.CommandPath())
+	if len(parts) == 0 {
+		return "kata"
+	}
+	return parts[len(parts)-1]
+}
+
+// emitJSONError writes a JSON envelope shaped after the daemon's
+// ErrorEnvelope plus a `kind` and `exit_code` for client-side classification.
+// The JSON envelope is always emitted to stderr in main so stdout stays
+// reserved for successful command output.
+func emitJSONError(w io.Writer, err error, runEReached bool) {
+	cli := cliErrorForErr(err, runEReached)
+	env := struct {
+		Error struct {
+			Kind     errKind `json:"kind"`
+			Code     string  `json:"code,omitempty"`
+			Message  string  `json:"message"`
+			ExitCode int     `json:"exit_code"`
+		} `json:"error"`
+	}{}
+	env.Error.Kind = cli.Kind
+	env.Error.Code = cli.Code
+	env.Error.Message = cli.Message
+	env.Error.ExitCode = cli.ExitCode
+	bs, mErr := json.Marshal(env)
+	if mErr == nil {
+		_, _ = fmt.Fprintln(w, string(bs))
+		return
+	}
+	emitHumanError(w, err, runEReached)
+}
+
+func emitHumanError(w io.Writer, err error, runEReached bool) {
+	cli := cliErrorForErr(err, runEReached)
+	_, _ = fmt.Fprintln(w, "kata:", cli.Message) //nolint:gosec // G705: CLI stderr error text, not HTML.
+}
+
+func cliErrorForErr(err error, runEReached bool) *cliError {
 	var cli *cliError
 	if !errors.As(err, &cli) {
 		// Non-cliError: synthesize one so the JSON path has uniform
@@ -133,28 +336,7 @@ func emitError(w io.Writer, err error, jsonMode bool, runEReached bool) {
 			ExitCode: exit,
 		}
 	}
-	if jsonMode {
-		env := struct {
-			Error struct {
-				Kind     errKind `json:"kind"`
-				Code     string  `json:"code,omitempty"`
-				Message  string  `json:"message"`
-				ExitCode int     `json:"exit_code"`
-			} `json:"error"`
-		}{}
-		env.Error.Kind = cli.Kind
-		env.Error.Code = cli.Code
-		env.Error.Message = cli.Message
-		env.Error.ExitCode = cli.ExitCode
-		bs, mErr := json.Marshal(env)
-		if mErr == nil {
-			_, _ = fmt.Fprintln(w, string(bs))
-			return
-		}
-		// JSON marshal failed (shouldn't happen on a fixed shape) —
-		// fall through to plain text so the user still gets *something*.
-	}
-	_, _ = fmt.Fprintln(w, "kata:", cli.Message)
+	return cli
 }
 
 // exitCodeForErr returns the exit code an error should produce. When

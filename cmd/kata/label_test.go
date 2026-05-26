@@ -16,12 +16,34 @@ func TestLabelAdd_HappyPath(t *testing.T) {
 	assert.Contains(t, out, "needs-review")
 }
 
+func TestLabelAdd_AgentOutput(t *testing.T) {
+	env, dir, _, ref := setupWorkspaceWithIssue(t, "a")
+
+	out := runCLI(t, env, dir, "--agent", "label", "add", ref, "needs-review")
+
+	assert.Regexp(t, `(?m)^OK label \S+ changed=true`, out)
+	assert.Contains(t, out, "Label: needs-review")
+	assert.Contains(t, out, "Action: added")
+}
+
 func TestLabelRm_HappyPath(t *testing.T) {
 	env, dir, _, ref := setupWorkspaceWithIssue(t, "a")
 
 	runCLI(t, env, dir, "label", "add", ref, "bug")
 	out := runCLI(t, env, dir, "label", "rm", ref, "bug")
 	assert.True(t, strings.Contains(out, "removed") || strings.Contains(out, "unlabeled"))
+}
+
+func TestLabelRm_AgentOutput(t *testing.T) {
+	env, dir, _, ref := setupWorkspaceWithIssue(t, "a")
+	runCLI(t, env, dir, "label", "add", ref, "bug")
+
+	resetFlags(t)
+	out := runCLI(t, env, dir, "--agent", "label", "rm", ref, "bug")
+
+	assert.Regexp(t, `(?m)^OK label \S+ changed=true`, out)
+	assert.Contains(t, out, "Label: bug")
+	assert.Contains(t, out, "Action: removed")
 }
 
 func TestLabelsList_PrintsCounts(t *testing.T) {
@@ -31,6 +53,18 @@ func TestLabelsList_PrintsCounts(t *testing.T) {
 	out := runCLI(t, env, dir, "labels")
 	assert.Contains(t, out, "bug")
 	assert.Contains(t, out, "1")
+}
+
+func TestLabelsList_AgentOutputIncludesCount(t *testing.T) {
+	env, dir, _, ref := setupWorkspaceWithIssue(t, "a")
+
+	runCLI(t, env, dir, "label", "add", ref, "bug")
+	runCLI(t, env, dir, "label", "add", ref, "safari")
+	out := runCLI(t, env, dir, "--agent", "labels")
+
+	assert.Contains(t, out, "OK labels count=2\n")
+	assert.Contains(t, out, "- label=bug count=1\n")
+	assert.Contains(t, out, "- label=safari count=1")
 }
 
 // TestLabel_RejectsEmptyLabel covers hammer-test finding #8: label rm with an

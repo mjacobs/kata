@@ -34,14 +34,6 @@ func newHealthCmd() *cobra.Command {
 			if status >= 400 {
 				return apiErrFromBody(status, bs)
 			}
-			if flags.JSON {
-				var buf bytes.Buffer
-				if err := emitJSON(&buf, json.RawMessage(bs)); err != nil {
-					return err
-				}
-				_, err := fmt.Fprint(cmd.OutOrStdout(), buf.String())
-				return err
-			}
 			var b struct {
 				OK            bool   `json:"ok"`
 				SchemaVersion int    `json:"schema_version"`
@@ -49,6 +41,23 @@ func newHealthCmd() *cobra.Command {
 				DBPath        string `json:"db_path"`
 			}
 			if err := json.Unmarshal(bs, &b); err != nil {
+				return err
+			}
+			mode := currentOutputMode()
+			if mode == outputAgent {
+				daemonStatus := "unhealthy"
+				if b.OK {
+					daemonStatus = "running"
+				}
+				_, err := fmt.Fprintf(cmd.OutOrStdout(), "OK health ok=%t daemon=%s\n", b.OK, daemonStatus)
+				return err
+			}
+			if mode == outputJSON {
+				var buf bytes.Buffer
+				if err := emitJSON(&buf, json.RawMessage(bs)); err != nil {
+					return err
+				}
+				_, err := fmt.Fprint(cmd.OutOrStdout(), buf.String())
 				return err
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "ok=%v schema_version=%d uptime=%s db=%s\n",

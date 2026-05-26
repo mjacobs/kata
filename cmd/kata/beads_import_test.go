@@ -20,21 +20,29 @@ import (
 func TestImportBeadsRejectsInputAndTargetFlags(t *testing.T) {
 	setupKataEnv(t)
 
-	_, err := runCmdOutput(t, nil, "import", "--format", "beads", "--input", "beads.jsonl")
+	_, err := runCmdOutput(t, nil, "import", "--source-format", "beads", "--input", "beads.jsonl")
 	ce := requireCLIError(t, err, ExitValidation)
 	assert.Contains(t, ce.Message, "--input")
 
-	_, err = runCmdOutput(t, nil, "import", "--format", "beads", "--target", "target.db")
+	_, err = runCmdOutput(t, nil, "import", "--source-format", "beads", "--target", "target.db")
 	ce = requireCLIError(t, err, ExitValidation)
 	assert.Contains(t, ce.Message, "--target")
 }
 
-func TestImportRejectsUnsupportedFormat(t *testing.T) {
+func TestImportRejectsUnsupportedSourceFormat(t *testing.T) {
 	setupKataEnv(t)
 
-	_, err := runCmdOutput(t, nil, "import", "--format", "bogus")
+	_, err := runCmdOutput(t, nil, "import", "--source-format", "bogus")
 	ce := requireCLIError(t, err, ExitValidation)
 	assert.Contains(t, ce.Message, "unsupported import format")
+}
+
+func TestImportLegacyFormatBeadsStillSelectsSource(t *testing.T) {
+	setupKataEnv(t)
+
+	_, err := runCmdOutput(t, nil, "import", "--format", "beads", "--input", "beads.jsonl")
+	ce := requireCLIError(t, err, ExitValidation)
+	assert.Contains(t, ce.Message, "--input")
 }
 
 func TestImportBeadsMissingProjectUnattended(t *testing.T) {
@@ -42,16 +50,29 @@ func TestImportBeadsMissingProjectUnattended(t *testing.T) {
 	env := testenv.New(t)
 	dir := t.TempDir()
 
-	_, err := runCLICapture(t, env, dir, "import", "--format", "beads", "--json")
+	_, err := runCLICapture(t, env, dir, "import", "--source-format", "beads", "--json")
 	ce := requireCLIError(t, err, ExitValidation)
 	assert.Contains(t, ce.Message, "run kata init first")
+}
+
+func TestImportBeadsAgentMissingProjectDoesNotPrompt(t *testing.T) {
+	resetFlags(t)
+	stubIsTTY(t, true)
+	env := testenv.New(t)
+	dir := t.TempDir()
+
+	out, err := runBeadsImportTTY(t, env, dir, "y\n", "--agent")
+
+	ce := requireCLIError(t, err, ExitValidation)
+	assert.Contains(t, ce.Message, "run kata init first")
+	assert.NotContains(t, out, "Run kata init now?")
 }
 
 func TestImportBeadsFromLiveBD(t *testing.T) {
 	env, dir, pid := setupCLIWorkspace(t)
 	installFakeBD(t)
 
-	out, err := runCLICapture(t, env, dir, "import", "--format", "beads", "--as", "importer")
+	out, err := runCLICapture(t, env, dir, "import", "--source-format", "beads", "--as", "importer")
 	require.NoError(t, err)
 	assert.Contains(t, out, "imported beads: created 1, updated 0, unchanged 0, comments 1, links 0")
 
@@ -75,7 +96,7 @@ func TestImportBeadsJSONSummaryFromLiveBD(t *testing.T) {
 	env, dir, _ := setupCLIWorkspace(t)
 	installFakeBD(t)
 
-	out, err := runCLICapture(t, env, dir, "import", "--format", "beads", "--json", "--as", "importer")
+	out, err := runCLICapture(t, env, dir, "import", "--source-format", "beads", "--json", "--as", "importer")
 	require.NoError(t, err)
 
 	var summary struct {
@@ -97,6 +118,17 @@ func TestImportBeadsJSONSummaryFromLiveBD(t *testing.T) {
 	assert.Empty(t, summary.Errors)
 }
 
+func TestImportBeadsAgentSummaryFromLiveBD(t *testing.T) {
+	env, dir, pid := setupCLIWorkspace(t)
+	installFakeBD(t)
+
+	out, err := runCLICapture(t, env, dir, "import", "--source-format", "beads", "--agent", "--as", "importer")
+	require.NoError(t, err)
+
+	assert.Equal(t, "OK import source_format=beads project="+itoa(pid)+" created=1 updated=0 unchanged=0 comments=1 links=0\n", out)
+	assert.NotContains(t, out, "target=")
+}
+
 // TestBeadsImport_AssignsShortIDs pins that imported beads issues pick
 // up a valid kata short_id from the auto-extend path — the importer
 // creates fresh kata ULIDs and the short_id flows through unchanged in
@@ -105,7 +137,7 @@ func TestBeadsImport_AssignsShortIDs(t *testing.T) {
 	env, dir, _ := setupCLIWorkspace(t)
 	installFakeBD(t)
 
-	out, err := runCLICapture(t, env, dir, "import", "--format", "beads", "--json", "--as", "importer")
+	out, err := runCLICapture(t, env, dir, "import", "--source-format", "beads", "--json", "--as", "importer")
 	require.NoError(t, err)
 
 	var result struct {
@@ -170,7 +202,7 @@ func runBeadsImportTTY(t *testing.T, env *testenv.Env, dir, input string, args .
 	cmd.SetIn(stdin)
 	cmd.SetOut(stdout)
 	cmd.SetErr(stdout)
-	cmd.SetArgs(append([]string{"--workspace", dir, "import", "--format", "beads"}, args...))
+	cmd.SetArgs(append([]string{"--workspace", dir, "import", "--source-format", "beads"}, args...))
 	cmd.SetContext(contextWithBaseURL(context.Background(), env.URL))
 	err = cmd.Execute()
 	require.NoError(t, stdout.Sync())
