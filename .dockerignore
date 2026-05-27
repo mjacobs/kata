@@ -1,0 +1,12 @@
+# Keep the build context to Go sources, manifests, and the embedded schema.
+.git
+.github
+.claude
+docs
+e2e
+dist
+*.md
+LICENSE
+kata
+kata.exe
+coverage.out

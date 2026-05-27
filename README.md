@@ -577,6 +577,112 @@ tailnet) are the access boundary in that read-only dev mode. Default behavior
 (no flag, no env, no local file) is unchanged: a local Unix-socket daemon is
 auto-started on demand.
 
+## Container image
+
+A hardened image for running the daemon is published to the GitHub
+Container Registry on each tagged release:
+
+```sh
+docker pull ghcr.io/kenn-io/kata:latest
+```
+
+It is multi-arch (`linux/amd64`, `linux/arm64`), built from
+`gcr.io/distroless/static-debian12:nonroot`, and runs as a non-root user
+(uid 65532) with no shell or package manager. Every published digest is
+cosign-signed (keyless, via GitHub's OIDC identity) and carries a
+build-provenance attestation — see [Verifying](#verifying-signature-and-provenance).
+
+### Runtime contract
+
+- **Data lives in `KATA_HOME`, which is `/data` in the image.** Mount a
+  writable volume there to persist the SQLite database, runtime files,
+  and hook state across restarts.
+- **The default entrypoint runs `kata daemon start`**, which binds a Unix
+  socket — reachable only inside the container. To serve clients on other
+  hosts, tell the daemon to bind a TCP address, either with `--listen` or
+  via `listen` in `KATA_HOME/config.toml`.
+- **Bind a concrete private IP, not a wildcard.** kata rejects the
+  unspecified address (`0.0.0.0` / `::`) and any public IP; it binds only
+  literal non-public addresses (loopback, RFC1918, CGNAT, link-local,
+  ULA). Mutating clients additionally need a token and the
+  `trust_private_network` flag, as described under
+  [Remote daemon](#remote-daemon-opt-in-private-network) above.
+
+Mount a `config.toml` and run the default entrypoint:
+
+```toml
+# stored at /data/config.toml inside the mounted volume
+listen = "172.20.0.10:7777"
+
+[auth]
+token = "change-me"
+trust_private_network = true
+```
+
+```sh
+docker network create --subnet 172.20.0.0/24 kata-net
+docker run -d --name kata \
+  --network kata-net --ip 172.20.0.10 \
+  -v kata-data:/data \
+  ghcr.io/kenn-io/kata:latest
+```
+
+Or pass the address and auth on the command line, overriding the default
+arguments:
+
+```sh
+docker run -d --name kata \
+  --network kata-net --ip 172.20.0.10 \
+  -e KATA_AUTH_TOKEN=change-me -e KATA_TRUST_PRIVATE_NETWORK=1 \
+  -v kata-data:/data \
+  ghcr.io/kenn-io/kata:latest \
+  daemon start --listen 172.20.0.10:7777
+```
+
+On Kubernetes, bind the pod IP from the downward API:
+
+```yaml
+env:
+  - name: POD_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+  - name: KATA_AUTH_TOKEN
+    valueFrom:
+      secretKeyRef: { name: kata, key: token }
+  - name: KATA_TRUST_PRIVATE_NETWORK
+    value: "1"
+args: ["daemon", "start", "--listen", "$(POD_IP):7777"]
+```
+
+### Verifying signature and provenance
+
+Verify the keyless signature with
+[cosign](https://github.com/sigstore/cosign):
+
+```sh
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/kenn-io/kata/[.]github/workflows/image[.]yml@refs/tags/.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/kenn-io/kata:latest
+```
+
+Inspect the build-provenance attestation with the GitHub CLI:
+
+```sh
+gh attestation verify oci://ghcr.io/kenn-io/kata:latest --repo kenn-io/kata
+```
+
+### Building locally
+
+The build is defined in `docker-bake.hcl`. Build a native single-arch
+image into your local engine and run it:
+
+```sh
+docker buildx bake image-local --load
+docker run --rm kata:local version
+```
+
 ## Backup and restore
 
 `kata export` writes the local database as JSONL; `kata import` rebuilds
