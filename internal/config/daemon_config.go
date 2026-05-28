@@ -119,7 +119,26 @@ func ReadDaemonConfig() (*DaemonConfig, error) {
 	cfg.Auth.Token = strings.TrimSpace(cfg.Auth.Token)
 	cfg.Auth.Proxy.TrustedActorHeader = strings.TrimSpace(cfg.Auth.Proxy.TrustedActorHeader)
 	applyDaemonConfigEnv(&cfg)
+	if err := validateAuthProxy(cfg.Auth.Proxy); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
 	return &cfg, nil
+}
+
+// validateAuthProxy rejects the dangerous partial-config case where the
+// operator names a trusted-proxy header but forgets to enumerate any trusted
+// listeners. A silent no-op there would look like proxy attribution is enabled
+// while the daemon still trusts whatever body actor a client supplied.
+//
+// The inverse (listeners without a header) is dead config — the mode stays off
+// because the header name is empty — and is accepted silently.
+func validateAuthProxy(p ProxyConfig) error {
+	if p.TrustedActorHeader != "" && len(p.TrustedProxyListeners) == 0 {
+		return errors.New(
+			"auth.proxy: trusted_actor_header is set but trusted_proxy_listeners is empty. " +
+				"Set both to enable proxy attribution, or unset the header to disable")
+	}
+	return nil
 }
 
 func applyDaemonConfigEnv(cfg *DaemonConfig) {

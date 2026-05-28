@@ -213,15 +213,76 @@ func TestApplyDaemonConfigEnv_AuthProxyHeader(t *testing.T) {
 	t.Setenv("KATA_AUTH_TOKEN", "")
 	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
 	t.Setenv("KATA_TRUSTED_ACTOR_HEADER", "X-Env-Actor")
+	t.Setenv("KATA_TRUSTED_PROXY_LISTENERS", "")
 
 	home := t.TempDir()
 	t.Setenv("KATA_HOME", home)
+	// Listeners are set in TOML so the resolved config is complete; this
+	// test asserts only that the env header beats the TOML header.
 	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"),
-		[]byte("[auth.proxy]\ntrusted_actor_header = \"X-Toml-Actor\"\n"), 0o600))
+		[]byte("[auth.proxy]\ntrusted_actor_header = \"X-Toml-Actor\"\ntrusted_proxy_listeners = [\"unix:///s\"]\n"), 0o600))
 	cfg, err := config.ReadDaemonConfig()
 	require.NoError(t, err)
 	require.Equal(t, "X-Env-Actor", cfg.Auth.Proxy.TrustedActorHeader,
 		"KATA_TRUSTED_ACTOR_HEADER must override config.toml")
+}
+
+func TestReadDaemonConfig_RejectsHeaderWithoutListeners(t *testing.T) {
+	t.Setenv("KATA_AUTH_TOKEN", "")
+	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
+	t.Setenv("KATA_TRUSTED_ACTOR_HEADER", "")
+	t.Setenv("KATA_TRUSTED_PROXY_LISTENERS", "")
+
+	home := t.TempDir()
+	t.Setenv("KATA_HOME", home)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"),
+		[]byte("[auth.proxy]\ntrusted_actor_header = \"X-Kata-Actor\"\n"), 0o600))
+
+	_, err := config.ReadDaemonConfig()
+	require.Error(t, err,
+		"header set without listeners must reject at config load, not silently no-op")
+	assert.Contains(t, err.Error(), "trusted_proxy_listeners",
+		"error must name the missing key so the operator can fix it")
+}
+
+func TestReadDaemonConfig_AcceptsListenersWithoutHeader(t *testing.T) {
+	// listeners without a header is dead config: the mode is off (no
+	// principal overwrite ever happens), so it has no security impact.
+	// Accept it silently so partial configs in the safe direction don't
+	// block daemon start.
+	t.Setenv("KATA_AUTH_TOKEN", "")
+	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
+	t.Setenv("KATA_TRUSTED_ACTOR_HEADER", "")
+	t.Setenv("KATA_TRUSTED_PROXY_LISTENERS", "")
+
+	home := t.TempDir()
+	t.Setenv("KATA_HOME", home)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"),
+		[]byte("[auth.proxy]\ntrusted_proxy_listeners = [\"unix:///s\"]\n"), 0o600))
+
+	cfg, err := config.ReadDaemonConfig()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Auth.Proxy.TrustedActorHeader)
+	assert.Equal(t, []string{"unix:///s"}, cfg.Auth.Proxy.TrustedProxyListeners)
+}
+
+func TestReadDaemonConfig_EnvCompletesPartialTOMLProxy(t *testing.T) {
+	// TOML supplies only the header (would be rejected alone); env adds
+	// listeners. Validation runs after env merge, so this is valid.
+	t.Setenv("KATA_AUTH_TOKEN", "")
+	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
+	t.Setenv("KATA_TRUSTED_ACTOR_HEADER", "")
+	t.Setenv("KATA_TRUSTED_PROXY_LISTENERS", "unix:///s")
+
+	home := t.TempDir()
+	t.Setenv("KATA_HOME", home)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"),
+		[]byte("[auth.proxy]\ntrusted_actor_header = \"X-Kata-Actor\"\n"), 0o600))
+
+	cfg, err := config.ReadDaemonConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "X-Kata-Actor", cfg.Auth.Proxy.TrustedActorHeader)
+	assert.Equal(t, []string{"unix:///s"}, cfg.Auth.Proxy.TrustedProxyListeners)
 }
 
 func TestApplyDaemonConfigEnv_AuthProxyListeners(t *testing.T) {
