@@ -245,6 +245,24 @@ func TestReadDaemonConfig_RejectsHeaderWithoutListeners(t *testing.T) {
 		"error must name the missing key so the operator can fix it")
 }
 
+func TestReadDaemonConfig_RejectsEnvOnlyHeaderWithoutListeners(t *testing.T) {
+	// No config.toml. Env supplies a header but no listeners. The
+	// missing-file path used to short-circuit before validation, so this
+	// would silently start with proxy attribution effectively off — the
+	// exact misconfig the file-present path rejects. Both paths must
+	// agree.
+	t.Setenv("KATA_AUTH_TOKEN", "")
+	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
+	t.Setenv("KATA_TRUSTED_ACTOR_HEADER", "X-Kata-Actor")
+	t.Setenv("KATA_TRUSTED_PROXY_LISTENERS", "")
+	t.Setenv("KATA_HOME", t.TempDir())
+
+	_, err := config.ReadDaemonConfig()
+	require.Error(t, err,
+		"env-only header without listeners must reject same as TOML-only")
+	assert.Contains(t, err.Error(), "trusted_proxy_listeners")
+}
+
 func TestReadDaemonConfig_AcceptsListenersWithoutHeader(t *testing.T) {
 	// listeners without a header is dead config: the mode is off (no
 	// principal overwrite ever happens), so it has no security impact.

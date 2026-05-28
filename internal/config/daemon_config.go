@@ -94,33 +94,34 @@ func ReadDaemonConfig() (*DaemonConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	var cfg DaemonConfig
 	data, err := os.ReadFile(path) //nolint:gosec // path is derived from KATA_HOME, not user input
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			var cfg DaemonConfig
-			applyDaemonConfigEnv(&cfg)
-			return &cfg, nil
+	switch {
+	case err == nil:
+		meta, err := toml.Decode(string(data), &cfg)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", path, err)
 		}
+		if u := meta.Undecoded(); len(u) > 0 {
+			keys := make([]string, len(u))
+			for i, k := range u {
+				keys[i] = k.String()
+			}
+			return nil, fmt.Errorf("parse %s: unknown key(s): %s", path, strings.Join(keys, ", "))
+		}
+		cfg.Listen = strings.TrimSpace(cfg.Listen)
+		cfg.Auth.Token = strings.TrimSpace(cfg.Auth.Token)
+		cfg.Auth.Proxy.TrustedActorHeader = strings.TrimSpace(cfg.Auth.Proxy.TrustedActorHeader)
+	case errors.Is(err, os.ErrNotExist):
+		// Absent file: fall through with zero-value cfg. Env merge and
+		// validation below still apply so an env-only misconfig is
+		// caught the same way a TOML-only one is.
+	default:
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	var cfg DaemonConfig
-	meta, err := toml.Decode(string(data), &cfg)
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	if u := meta.Undecoded(); len(u) > 0 {
-		keys := make([]string, len(u))
-		for i, k := range u {
-			keys[i] = k.String()
-		}
-		return nil, fmt.Errorf("parse %s: unknown key(s): %s", path, strings.Join(keys, ", "))
-	}
-	cfg.Listen = strings.TrimSpace(cfg.Listen)
-	cfg.Auth.Token = strings.TrimSpace(cfg.Auth.Token)
-	cfg.Auth.Proxy.TrustedActorHeader = strings.TrimSpace(cfg.Auth.Proxy.TrustedActorHeader)
 	applyDaemonConfigEnv(&cfg)
 	if err := validateAuthProxy(cfg.Auth.Proxy); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, err
 	}
 	return &cfg, nil
 }
