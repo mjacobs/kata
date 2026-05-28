@@ -298,11 +298,22 @@ func TestTCPEndpointAny_RejectsGUAIPv6(t *testing.T) {
 	assert.Contains(t, err.Error(), "non-public")
 }
 
-func TestTCPEndpointAny_RejectsUnspecified(t *testing.T) {
+func TestTCPEndpointAny_AcceptsUnspecified(t *testing.T) {
+	// The Heroku-style $PORT contract used by PaaS hosting (Cloud Run,
+	// Render, Fly.io, etc.) requires binding every interface
+	// (0.0.0.0:$PORT), so the address validator must permit the
+	// wildcard. Exposure is gated by checkAuthStartup, not by this
+	// layer. Bind may still fail in an IPv6-less environment ([::]:0),
+	// so we only assert the validator itself does not reject the
+	// address.
 	for _, addr := range []string{"0.0.0.0:0", "[::]:0"} {
-		_, err := daemon.TCPEndpointAny(addr).Listen()
-		require.Error(t, err, addr)
-		assert.Contains(t, err.Error(), "non-public", addr)
+		l, err := daemon.TCPEndpointAny(addr).Listen()
+		if err != nil {
+			assert.NotContains(t, err.Error(), "non-public", addr)
+			assert.NotContains(t, err.Error(), "literal IP", addr)
+			continue
+		}
+		_ = l.Close()
 	}
 }
 
