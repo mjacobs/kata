@@ -579,18 +579,15 @@ auto-started on demand.
 
 ## Container image
 
-A hardened image for running the daemon is published to the GitHub
-Container Registry on each tagged release:
-
-```sh
-docker pull ghcr.io/kenn-io/kata:latest
-```
-
-It is multi-arch (`linux/amd64`, `linux/arm64`), built from
-`gcr.io/distroless/static-debian12:nonroot`, and runs as a non-root user
-(uid 65532) with no shell or package manager. Every published digest is
-cosign-signed (keyless, via GitHub's OIDC identity) and carries a
-build-provenance attestation — see [Verifying](#verifying-signature-and-provenance).
+A hardened, multi-stage image for running the daemon is defined in
+`docker-bake.hcl`. It is built from
+`gcr.io/distroless/static-debian12:nonroot`, runs as a non-root user
+(uid 65532) with no shell or package manager, and is multi-arch
+(`linux/amd64`, `linux/arm64`). Tagged releases publish a cosign-signed
+image, with a build-provenance attestation, to the project's Artifact
+Registry for the maintained deployment — see
+[Verifying](#verifying-signature-and-provenance). To build it yourself, see
+[Building locally](#building-locally) below.
 
 ### Runtime contract
 
@@ -624,7 +621,7 @@ docker network create --subnet 172.20.0.0/24 kata-net
 docker run -d --name kata \
   --network kata-net --ip 172.20.0.10 \
   -v kata-data:/data \
-  ghcr.io/kenn-io/kata:latest
+  kata:local
 ```
 
 Or pass the address and auth on the command line, overriding the default
@@ -635,7 +632,7 @@ docker run -d --name kata \
   --network kata-net --ip 172.20.0.10 \
   -e KATA_AUTH_TOKEN=change-me -e KATA_TRUST_PRIVATE_NETWORK=1 \
   -v kata-data:/data \
-  ghcr.io/kenn-io/kata:latest \
+  kata:local \
   daemon start --listen 172.20.0.10:7777
 ```
 
@@ -657,20 +654,15 @@ args: ["daemon", "start", "--listen", "$(POD_IP):7777"]
 
 ### Verifying signature and provenance
 
-Verify the keyless signature with
-[cosign](https://github.com/sigstore/cosign):
+Each published digest is signed keyless via GitHub's OIDC identity. Verify it
+with [cosign](https://github.com/sigstore/cosign), substituting the published
+image reference:
 
 ```sh
 cosign verify \
   --certificate-identity-regexp '^https://github.com/kenn-io/kata/[.]github/workflows/image[.]yml@refs/tags/.*$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  ghcr.io/kenn-io/kata:latest
-```
-
-Inspect the build-provenance attestation with the GitHub CLI:
-
-```sh
-gh attestation verify oci://ghcr.io/kenn-io/kata:latest --repo kenn-io/kata
+  <ar-host>/<project>/<repo>/kata:<tag>
 ```
 
 ### Building locally
