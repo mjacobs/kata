@@ -39,9 +39,17 @@ type DaemonConfig struct {
 // ephemeral or CI-only tokens that should never be persisted to disk.
 // KATA_TRUST_PRIVATE_NETWORK=1 is equivalent to trust_private_network = true.
 type AuthConfig struct {
-	Token                string `toml:"token"`
-	TrustPrivateNetwork  bool   `toml:"trust_private_network"`
-	RequireTokenIdentity bool   `toml:"require_token_identity"`
+	Token                string      `toml:"token"`
+	TrustPrivateNetwork  bool        `toml:"trust_private_network"`
+	RequireTokenIdentity bool        `toml:"require_token_identity"`
+	Proxy                ProxyConfig `toml:"proxy"`
+}
+
+// ProxyConfig is the [auth.proxy] sub-table. Both keys empty/absent means
+// trusted-proxy actor mode is off; this is the default.
+type ProxyConfig struct {
+	TrustedActorHeader    string   `toml:"trusted_actor_header"`
+	TrustedProxyListeners []string `toml:"trusted_proxy_listeners"`
 }
 
 // TUIConfig holds TUI user preferences from <KATA_HOME>/config.toml.
@@ -109,6 +117,7 @@ func ReadDaemonConfig() (*DaemonConfig, error) {
 	}
 	cfg.Listen = strings.TrimSpace(cfg.Listen)
 	cfg.Auth.Token = strings.TrimSpace(cfg.Auth.Token)
+	cfg.Auth.Proxy.TrustedActorHeader = strings.TrimSpace(cfg.Auth.Proxy.TrustedActorHeader)
 	applyDaemonConfigEnv(&cfg)
 	return &cfg, nil
 }

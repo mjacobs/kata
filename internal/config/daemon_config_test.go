@@ -181,3 +181,30 @@ func TestReadDaemonConfig_AuthTokenAbsent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, cfg.Auth.Token)
 }
+
+func TestReadDaemonConfig_AuthProxy(t *testing.T) {
+	t.Setenv("KATA_AUTH_TOKEN", "")
+	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
+	t.Setenv("KATA_TRUSTED_ACTOR_HEADER", "")
+	t.Setenv("KATA_TRUSTED_PROXY_LISTENERS", "")
+
+	dir := t.TempDir()
+	t.Setenv("KATA_HOME", dir)
+	path := filepath.Join(dir, "config.toml")
+	body := `
+[auth]
+token = "tok"
+
+[auth.proxy]
+trusted_actor_header = "X-Kata-Actor"
+trusted_proxy_listeners = ["unix:///run/kata/proxy.sock", "100.64.0.5:7777"]
+`
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+	cfg, err := config.ReadDaemonConfig()
+	require.NoError(t, err)
+	require.Equal(t, "X-Kata-Actor", cfg.Auth.Proxy.TrustedActorHeader)
+	require.Equal(t,
+		[]string{"unix:///run/kata/proxy.sock", "100.64.0.5:7777"},
+		cfg.Auth.Proxy.TrustedProxyListeners)
+}
