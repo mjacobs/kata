@@ -96,7 +96,7 @@ func NewServer(cfg ServerConfig) *Server {
 	s := &Server{cfg: cfg, api: humaAPI}
 	registerRoutes(humaAPI, mux, cfg)
 
-	s.handler = withCSRFGuards(requireBearer(cfg.authPolicy(), cfg.DB)(mux))
+	s.handler = withCSRFGuards(requireBearer(cfg.authPolicy(), cfg.DB)(withTrustedProxyActor(cfg)(mux)))
 	return s
 }
 
