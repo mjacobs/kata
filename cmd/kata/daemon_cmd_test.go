@@ -277,6 +277,56 @@ func TestDaemonStart_ListenFlagRejectsMalformed(t *testing.T) {
 	assert.Contains(t, err.Error(), "--listen")
 }
 
+func TestListenFromPortEnv(t *testing.T) {
+	t.Run("PORT yields wildcard bind", func(t *testing.T) {
+		t.Setenv(daemon.AutoStartMarkerEnv, "")
+		t.Setenv("PORT", "8080")
+		addr, ok := listenFromPortEnv()
+		require.True(t, ok)
+		assert.Equal(t, "0.0.0.0:8080", addr)
+	})
+	t.Run("auto-start marker suppresses PORT reading", func(t *testing.T) {
+		// The implicit auto-start child inherits the parent environment,
+		// so a stray PORT on a developer's shell must not flip it onto
+		// wildcard TCP — the spawner stamps the marker for that reason.
+		t.Setenv(daemon.AutoStartMarkerEnv, "1")
+		t.Setenv("PORT", "8080")
+		_, ok := listenFromPortEnv()
+		assert.False(t, ok)
+	})
+	t.Run("invalid PORT is ignored", func(t *testing.T) {
+		t.Setenv(daemon.AutoStartMarkerEnv, "")
+		t.Setenv("PORT", "not-a-port")
+		_, ok := listenFromPortEnv()
+		assert.False(t, ok)
+	})
+}
+
+// TestDaemonStart_PortEnvBindsWildcard verifies that when the platform
+// injects PORT and the daemon is started explicitly (no auto-start
+// marker), with no --listen flag and no config value, the bind address
+// is derived from PORT as 0.0.0.0:$PORT. With no token configured, the
+// auth-startup guard refuses the non-loopback bind — and the refusal
+// names the derived address, proving the PORT path was taken and the
+// address passed validation.
+func TestDaemonStart_PortEnvBindsWildcard(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("KATA_HOME", tmp)
+	t.Setenv("KATA_DB", filepath.Join(tmp, "kata.db"))
+	t.Setenv(daemon.AutoStartMarkerEnv, "")
+	t.Setenv("PORT", "8081")
+
+	cmd := newRootCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"daemon", "start"})
+
+	err := cmd.ExecuteContext(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "0.0.0.0:8081")
+}
+
 // TestDaemonStart_ConfigFileListenIsHonored verifies that
 // <KATA_HOME>/config.toml's `listen = ...` value is picked up when the
 // --listen flag is absent. We use an obviously-public address so the

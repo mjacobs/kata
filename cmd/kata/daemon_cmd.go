@@ -263,6 +263,11 @@ func runDaemonWithListen(ctx context.Context, listen string, insecureReadonly bo
 	if listen == "" {
 		listen = dcfg.Listen
 	}
+	if listen == "" {
+		if addr, ok := listenFromPortEnv(); ok {
+			listen = addr
+		}
+	}
 	ns, err := daemon.NewNamespace()
 	if err != nil {
 		return err
@@ -362,6 +367,29 @@ func chooseEndpoint(ns *daemon.Namespace, listen string) (daemon.DaemonEndpoint,
 		return nil, fmt.Errorf("kata daemon: invalid --listen value %q: %v", listen, err)
 	}
 	return daemon.TCPEndpointAny(listen), nil
+}
+
+// listenFromPortEnv reports the bind address to use when the daemon is
+// hosted on a PaaS that follows the Heroku-style $PORT contract. Cloud
+// Run, Render, Fly.io, Railway, and App Engine all work this way: the
+// platform injects PORT into the environment and expects the process to
+// bind every interface at 0.0.0.0:$PORT. Consulted only when neither
+// --listen nor a config value was supplied.
+//
+// The auto-start child inherits the parent environment, so a stray PORT
+// in a developer's shell would otherwise hijack every implicit daemon
+// onto wildcard TCP. We refuse to act on PORT when the auto-start marker
+// (daemon.AutoStartMarkerEnv) is set on the process; daemonclient stamps
+// it on the child to identify itself.
+func listenFromPortEnv() (string, bool) {
+	if os.Getenv(daemon.AutoStartMarkerEnv) == "1" {
+		return "", false
+	}
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return "", false
+	}
+	return net.JoinHostPort("0.0.0.0", port), true
 }
 
 // setupHooks loads hooks.toml, materializes $KATA_HOME, and constructs

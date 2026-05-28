@@ -163,6 +163,11 @@ func autoStart(ctx context.Context, dataDir string) (string, error) {
 	cmd := exec.Command(exe, "daemon", "start")
 	cmd.Stdout = nil
 	cmd.Stderr = os.Stderr
+	// Mark the child as an implicit auto-start so it skips the PORT-env
+	// listen path (see listenFromPortEnv). The child inherits the
+	// parent's environment, so a stray PORT in a developer's shell would
+	// otherwise flip every implicit daemon onto wildcard TCP.
+	cmd.Env = append(os.Environ(), daemon.AutoStartMarkerEnv+"=1")
 	// Detach the child into its own process group so SIGINT delivered to the
 	// foreground caller (e.g. ctrl-C on `kata create` or `kata tui`) is not
 	// propagated to the daemon we just spawned.

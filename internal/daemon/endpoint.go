@@ -22,6 +22,13 @@ type DaemonEndpoint interface {
 
 type unixEndpoint struct{ path string }
 
+// AutoStartMarkerEnv names the environment variable set on the auto-start
+// child daemon process so it can recognize itself as implicitly spawned.
+// The marker lets the child suppress behavior that should only fire when
+// the daemon is started explicitly — currently, the PORT-env listen path
+// (see cmd/kata listenFromPortEnv). Setter: daemonclient.autoStart.
+const AutoStartMarkerEnv = "KATA_AUTOSTART"
+
 // staleSocketProbeTimeout caps how long the pre-bind probe waits
 // before giving up. A short timeout is enough on a healthy host: a
 // running daemon accepts immediately, and a stale socket whose owner
@@ -116,9 +123,11 @@ func (t tcpAnyEndpoint) Address() string { return t.addr }
 func (t tcpAnyEndpoint) Kind() string    { return "tcp" }
 
 // TCPEndpointAny constructs a TCP endpoint that accepts any non-public
-// address (loopback, RFC1918, CGNAT, link-local, ULA). Public IPv4,
-// GUA IPv6, and unspecified (0.0.0.0 / ::) are rejected. Hostnames are
-// rejected — callers must resolve to a literal IP.
+// address (loopback, RFC1918, CGNAT, link-local, ULA) plus the unspecified
+// wildcard (0.0.0.0 / ::), so the daemon can satisfy the Heroku-style
+// $PORT contract used by PaaS hosting platforms (Cloud Run, Render,
+// Fly.io, Railway, App Engine, etc.). Public IPv4 and GUA IPv6 are
+// rejected. Hostnames are rejected — callers must resolve to a literal IP.
 func TCPEndpointAny(addr string) DaemonEndpoint { return tcpAnyEndpoint{addr: addr} }
 
 // cgnatBlock is RFC6598 100.64.0.0/10 — the carrier-grade NAT range
@@ -138,8 +147,15 @@ var cgnatBlock = &net.IPNet{
 func ValidateNonPublicAddress(addr string) error { return requireNonPublic(addr) }
 
 // requireNonPublic accepts loopback, RFC1918 (via IsPrivate), CGNAT,
-// link-local, and ULA. Rejects public IPv4, GUA IPv6, the unspecified
-// address (0.0.0.0 / ::), and any hostname.
+// link-local, ULA, and the unspecified wildcard (0.0.0.0 / ::). Rejects
+// public IPv4, GUA IPv6, and any hostname.
+//
+// The wildcard is permitted so the daemon can bind every interface to
+// satisfy the Heroku-style $PORT contract used by PaaS hosting platforms
+// (Cloud Run, Render, Fly.io, Railway, App Engine, etc.). This does not
+// weaken exposure control: checkAuthStartup still refuses any non-loopback
+// bind (the wildcard included) unless the operator supplies a bearer
+// token plus trust_private_network, or opts into --insecure-readonly.
 func requireNonPublic(addr string) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -150,7 +166,7 @@ func requireNonPublic(addr string) error {
 		return fmt.Errorf("address %q is not a literal IP (resolve hostnames before calling)", addr)
 	}
 	if ip.IsUnspecified() {
-		return fmt.Errorf("address %q is non-public: unspecified bind not allowed; use a private address (loopback, RFC1918, CGNAT, link-local, ULA)", addr)
+		return nil
 	}
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || cgnatBlock.Contains(ip) {
 		return nil
