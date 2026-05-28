@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"context"
 	"net"
+	"net/http"
 	"strings"
 )
 
@@ -31,4 +33,42 @@ func listenerTrusted(localAddr net.Addr, allowlist []string) bool {
 func normalizeListenerEntry(s string) string {
 	s = strings.TrimSpace(s)
 	return strings.TrimPrefix(s, "unix://")
+}
+
+// withTrustedProxyActor inspects each request's local address and, on a
+// trusted listener, overwrites the request principal with a
+// PrincipalTrustedProxy carrying the header value. A missing or empty
+// header on a trusted listener becomes a PrincipalTrustedProxyAbsent
+// sentinel. The middleware never rejects on its own; rejection is left to
+// ensureAttributedWriteAllowed so read-only paths (which never call
+// attributedActor) are not blocked.
+func withTrustedProxyActor(cfg ServerConfig) func(http.Handler) http.Handler {
+	headerName := strings.TrimSpace(cfg.Auth.Proxy.TrustedActorHeader)
+	allowlist := cfg.Auth.Proxy.TrustedProxyListeners
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if headerName == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			localAddr, _ := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+			if !listenerTrusted(localAddr, allowlist) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			raw := strings.TrimSpace(r.Header.Get(headerName))
+			var ctx context.Context
+			if raw != "" {
+				ctx = WithPrincipal(r.Context(), Principal{
+					Kind:  PrincipalTrustedProxy,
+					Actor: raw,
+				})
+			} else {
+				ctx = WithPrincipal(r.Context(), Principal{
+					Kind: PrincipalTrustedProxyAbsent,
+				})
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
