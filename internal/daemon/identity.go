@@ -71,11 +71,19 @@ func attributedActor(ctx context.Context, requestActor string) (string, error) {
 
 func ensureAttributedWriteAllowed(ctx context.Context) error {
 	p, ok := PrincipalFromContext(ctx)
-	if !ok || p.Kind != PrincipalBootstrap {
+	if !ok {
 		return nil
 	}
-	return api.NewError(403, "bootstrap_token_write_forbidden",
-		"bootstrap token cannot perform attributed writes; use a user token", "", nil)
+	switch p.Kind {
+	case PrincipalBootstrap:
+		return api.NewError(403, "bootstrap_token_write_forbidden",
+			"bootstrap token cannot perform attributed writes; use a user token", "", nil)
+	case PrincipalTrustedProxyAbsent:
+		return api.NewError(400, "actor_header_required",
+			"actor header required on this listener but was missing or empty", "", nil)
+	default:
+		return nil
+	}
 }
 
 func ensureTokenAdminAllowed(ctx context.Context) error {
