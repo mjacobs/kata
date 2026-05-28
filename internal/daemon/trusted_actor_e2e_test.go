@@ -154,3 +154,18 @@ func TestTrustedProxyHeader_MissingHeaderRejects(t *testing.T) {
 		body, nil) // no X-Kata-Actor on the close call
 	assertAPIError(t, resp.StatusCode, raw, http.StatusBadRequest, "actor_header_required")
 }
+
+// TestTrustedProxyHeader_ReadsNotBlocked verifies that a header-less GET on a
+// trusted listener still returns 2xx. The middleware stores PrincipalTrustedProxyAbsent
+// for the read, but read handlers never call attributedActor, so the missing
+// header must not reject the request.
+func TestTrustedProxyHeader_ReadsNotBlocked(t *testing.T) {
+	ts := startTrustedProxyTestServer(t, "X-Kata-Actor")
+
+	// GET /api/v1/health is a read with no actor and no required setup.
+	// On a trusted listener with no header, the middleware stores a
+	// trusted-but-absent principal; the health handler never calls
+	// attributedActor, so it must still return 200.
+	resp, raw := doReq(t, ts, "GET", "/api/v1/health", nil, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", raw)
+}
