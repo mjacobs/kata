@@ -129,3 +129,28 @@ func TestTrustedProxyHeader_CreditsHeaderActor(t *testing.T) {
 	assert.Equal(t, "proxy-user", payload.Event.Actor,
 		"event.actor must reflect the trusted header value, not the body actor")
 }
+
+// TestTrustedProxyHeader_MissingHeaderRejects verifies the negative path:
+// when the trusted listener is configured but the client omits the actor
+// header, withTrustedProxyActor installs PrincipalTrustedProxyAbsent and
+// ensureAttributedWriteAllowed rejects the write with actor_header_required.
+// Without this guard a misconfigured proxy could silently let body-supplied
+// actor values through on a listener that callers expect to be header-attributed.
+func TestTrustedProxyHeader_MissingHeaderRejects(t *testing.T) {
+	ts := startTrustedProxyTestServer(t, "X-Kata-Actor")
+
+	projectID := trustedProxyCreateProject(t, ts, map[string]string{"X-Kata-Actor": "setup"})
+	issueRef := trustedProxyCreateIssue(t, ts, projectID,
+		map[string]string{"X-Kata-Actor": "setup"})
+
+	body := map[string]any{
+		"actor":   "client-claim",
+		"reason":  "done",
+		"message": "should be rejected because the trusted header is missing.",
+		"source":  "tui",
+	}
+	resp, raw := doReq(t, ts, "POST",
+		"/api/v1/projects/"+strconv.FormatInt(projectID, 10)+"/issues/"+issueRef+"/actions/close",
+		body, nil) // no X-Kata-Actor on the close call
+	assertAPIError(t, resp.StatusCode, raw, http.StatusBadRequest, "actor_header_required")
+}
