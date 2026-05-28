@@ -19,8 +19,13 @@ user (SSO, OAuth, mutual-TLS, whatever), and asserts the actor via a configured
 HTTP header over a daemon path only the proxy can reach.
 
 Token identity and trusted-proxy identity are two **server-derived actor
-modes**. Both ignore client-supplied actor fields. Neither falls back to body or
-query actor when enabled. An operator picks one based on their deployment:
+modes**. Both ignore client-supplied actor fields where they apply. Token
+identity applies on every request the daemon accepts (PR #65). Trusted-proxy
+identity applies only to requests that arrive on a configured trusted listener;
+requests on any other listener follow PR #65's existing rules unchanged. Within
+the scope where a mode applies, there is no fallback to a body or query actor.
+An operator picks one mode (or both, on different listeners) based on their
+deployment:
 
 | Mode | Auth boundary | Actor source | Best for |
 |------|---------------|--------------|----------|
@@ -53,12 +58,25 @@ Environment overrides match the existing style (`KATA_AUTH_TOKEN`,
 - `KATA_TRUSTED_ACTOR_HEADER` — string; overrides `trusted_actor_header`.
 - `KATA_TRUSTED_PROXY_LISTENERS` — comma-separated list; overrides
   `trusted_proxy_listeners`. Entries are trimmed; empty entries are dropped.
-  Treats empty/unset env value as "no override" (matches `KATA_AUTH_TOKEN`).
 
-The mode is **on** only when `trusted_actor_header` is non-empty after
-resolution. `trusted_proxy_listeners` with an empty header is inert (header off
-wins). Absent everywhere = off; existing configs parse and behave exactly as
-before.
+Both env vars treat empty/unset as "no override" (matches `KATA_AUTH_TOKEN`):
+an operator cannot disable a TOML-enabled mode by setting the env var to an
+empty string. Disabling the mode requires editing config.toml. This is
+intentional — silently turning off a security-affecting config from an empty
+env var is more dangerous than the friction of a config edit.
+
+Resolution rules after env + TOML merge:
+
+- `trusted_actor_header` empty → mode **off**. The header (if any) is ignored
+  everywhere; PR #65 behavior is unchanged.
+- `trusted_actor_header` non-empty, `trusted_proxy_listeners` empty → no
+  listener ever matches, so the header is ignored on every request. Observable
+  behavior is identical to off, but it is a misconfiguration worth calling out
+  in operator docs.
+- `trusted_actor_header` non-empty, `trusted_proxy_listeners` non-empty → mode
+  **on** for the listed listeners; other listeners pass through untouched.
+
+Absent everywhere = off; existing configs parse and behave exactly as before.
 
 ### 2.1 Listener address forms
 
@@ -131,6 +149,11 @@ The middleware never rejects on its own; rejection is decided downstream in
 `attributedActor` / `actorFor` so read-only requests (which do not call those
 functions) are never blocked.
 
+If the proxy ever sends multiple values for the configured header, the
+middleware reads only the first value (Go's `r.Header.Get` semantics). Operator
+docs should require a single value at the proxy boundary so this never matters
+in practice.
+
 ### 3.3 Integration with PR #65's `attributedActor` chokepoint
 
 PR #65 lands one chokepoint for all attributed writes:
@@ -162,7 +185,34 @@ kind** rather than introducing a parallel resolver:
 All 26 mutation handlers PR #65 swapped to `attributedActor` automatically pick
 up the new attribution source — no further handler edits.
 
-### 3.4 Schema stays required
+### 3.4 Principal precedence
+
+`withTrustedProxyActor` overwrites whichever principal PR #65 already attached
+to the request when the request lands on a trusted listener and the mode is on.
+The full matrix:
+
+| Listener trusted? | Header set? | Mode | Principal on ctx after middleware | Mutation outcome via `attributedActor` |
+|-------------------|-------------|------|------------------------------------|----------------------------------------|
+| n/a | n/a | off | Whatever PR #65 set (`StaticToken` / `Bootstrap` / `DBToken` / none) | PR #65 rules |
+| no | any | on | Whatever PR #65 set | PR #65 rules |
+| yes | non-empty | on | `PrincipalTrustedProxy{Actor: <header>}` (overwrites PR #65) | `actorFor` returns the header value; body actor ignored |
+| yes | empty/absent | on | `PrincipalTrustedProxyAbsent` (overwrites PR #65) | `ensureAttributedWriteAllowed` rejects with `400 actor_header_required` |
+
+Two consequences of the overwrite-on-trusted-listener rule:
+
+- A valid DB-token identity from PR #65 is silently discarded when the same
+  request lands on a trusted listener with this mode on. Operators running
+  both modes on the same listener are choosing this behavior; the deployment
+  guidance is to terminate each mode on its own listener (a Unix socket for
+  the proxy; a TCP port for direct token-holding clients).
+- Token-admin endpoints (`POST /api/v1/tokens`, `GET /api/v1/tokens`,
+  `POST /api/v1/tokens/{id}/actions/revoke`) reject `PrincipalTrustedProxy`
+  via PR #65's `ensureTokenAdminAllowed`, which admits only
+  `PrincipalBootstrap`, `PrincipalStaticToken`, or no-principal. A
+  trusted-proxy front-end cannot mint or revoke tokens; that capability stays
+  bound to the bootstrap actor.
+
+### 3.5 Schema stays required
 
 The `actor` body/query field keeps its `required:"true"` Huma tag. On a trusted
 listener the client still sends some actor value, which is simply ignored in
