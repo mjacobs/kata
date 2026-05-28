@@ -67,12 +67,17 @@ env var is more dangerous than the friction of a config edit.
 
 Resolution rules after env + TOML merge:
 
-- `trusted_actor_header` empty → mode **off**. The header (if any) is ignored
-  everywhere; PR #65 behavior is unchanged.
-- `trusted_actor_header` non-empty, `trusted_proxy_listeners` empty → no
-  listener ever matches, so the header is ignored on every request. Observable
-  behavior is identical to off, but it is a misconfiguration worth calling out
-  in operator docs.
+- `trusted_actor_header` empty, `trusted_proxy_listeners` any → mode **off**.
+  The header (if any) is ignored everywhere; PR #65 behavior is unchanged.
+  Listeners-without-header is accepted as dead config (no security impact:
+  with no header name, no overwrite ever happens).
+- `trusted_actor_header` non-empty, `trusted_proxy_listeners` empty →
+  **rejected at config load** with an error naming the missing key. A silent
+  no-op here is dangerous: an operator who typos the listener address (or
+  forgets it) would believe proxy attribution is on while body-supplied actors
+  continue to flow through. Implementers: `ReadDaemonConfig` must return an
+  error in this case after the env+TOML merge so an env-supplied listener can
+  complete a TOML-supplied header (and vice versa).
 - `trusted_actor_header` non-empty, `trusted_proxy_listeners` non-empty → mode
   **on** for the listed listeners; other listeners pass through untouched.
 
@@ -150,9 +155,12 @@ The middleware never rejects on its own; rejection is decided downstream in
 functions) are never blocked.
 
 If the proxy ever sends multiple values for the configured header, the
-middleware reads only the first value (Go's `r.Header.Get` semantics). Operator
-docs should require a single value at the proxy boundary so this never matters
-in practice.
+middleware silently uses the first value (Go's `r.Header.Get` semantics) — no
+log, no rejection. This is intentional: detecting and reacting to malformed
+proxy behavior is the proxy operator's job, not the daemon's, and adding a log
+line per request would just be noise on every well-formed deployment. Operator
+docs must require a single value at the proxy boundary so this case never
+arises in practice.
 
 ### 3.3 Integration with PR #65's `attributedActor` chokepoint
 
@@ -206,11 +214,15 @@ Two consequences of the overwrite-on-trusted-listener rule:
   guidance is to terminate each mode on its own listener (a Unix socket for
   the proxy; a TCP port for direct token-holding clients).
 - Token-admin endpoints (`POST /api/v1/tokens`, `GET /api/v1/tokens`,
-  `POST /api/v1/tokens/{id}/actions/revoke`) reject `PrincipalTrustedProxy`
-  via PR #65's `ensureTokenAdminAllowed`, which admits only
+  `POST /api/v1/tokens/{id}/actions/revoke`) reject **both** trusted-proxy
+  principal kinds — `PrincipalTrustedProxy` and `PrincipalTrustedProxyAbsent` —
+  via PR #65's `ensureTokenAdminAllowed`, which is allow-list and admits only
   `PrincipalBootstrap`, `PrincipalStaticToken`, or no-principal. A
-  trusted-proxy front-end cannot mint or revoke tokens; that capability stays
-  bound to the bootstrap actor.
+  trusted-proxy front-end cannot mint or revoke tokens whether or not it
+  supplies the header; that capability stays bound to the bootstrap actor.
+  Both branches are pinned by tests
+  (`TestTrustedProxyHeader_TokenAdminForbidden` for the header-present case,
+  `TestTrustedProxyHeader_TokenAdminForbiddenWithoutHeader` for absent).
 
 ### 3.5 Schema stays required
 
