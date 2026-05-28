@@ -261,11 +261,10 @@ func runDaemonWithListen(ctx context.Context, listen string, insecureReadonly bo
 		return err
 	}
 	if listen == "" {
-		listen = dcfg.Listen
-	}
-	if listen == "" {
-		if addr, ok := listenFromPortEnv(); ok {
-			listen = addr
+		if listen = dcfg.Listen; listen == "" {
+			if addr, ok := listenFromPortEnv(); ok {
+				listen = addr
+			}
 		}
 	}
 	ns, err := daemon.NewNamespace()

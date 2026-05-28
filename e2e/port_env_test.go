@@ -80,7 +80,7 @@ func TestPortEnvBind_ServesAndShutsDownCleanly(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "http://"+addr+"/api/v1/projects", nil) //nolint:noctx
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer "+token)
-	authResp, err := client.Do(req)
+	authResp, err := client.Do(req) //nolint:gosec // G107: URL is "http://127.0.0.1:<free-port>" composed from freeTCPPort.
 	require.NoError(t, err)
 	_ = authResp.Body.Close()
 	assert.NotEqual(t, http.StatusUnauthorized, authResp.StatusCode,
