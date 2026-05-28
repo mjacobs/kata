@@ -130,6 +130,19 @@ func applyDaemonConfigEnv(cfg *DaemonConfig) {
 	if EnvTruthy("KATA_TRUST_PRIVATE_NETWORK") {
 		cfg.Auth.TrustPrivateNetwork = true
 	}
+	if v := strings.TrimSpace(os.Getenv("KATA_TRUSTED_ACTOR_HEADER")); v != "" {
+		cfg.Auth.Proxy.TrustedActorHeader = v
+	}
+	if raw := os.Getenv("KATA_TRUSTED_PROXY_LISTENERS"); raw != "" {
+		parts := strings.Split(raw, ",")
+		out := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				out = append(out, t)
+			}
+		}
+		cfg.Auth.Proxy.TrustedProxyListeners = out
+	}
 }
 
 // EnvTruthy reports whether an environment variable is set to a recognized

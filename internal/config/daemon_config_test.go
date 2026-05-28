@@ -208,3 +208,36 @@ trusted_proxy_listeners = ["unix:///run/kata/proxy.sock", "100.64.0.5:7777"]
 		[]string{"unix:///run/kata/proxy.sock", "100.64.0.5:7777"},
 		cfg.Auth.Proxy.TrustedProxyListeners)
 }
+
+func TestApplyDaemonConfigEnv_AuthProxyHeader(t *testing.T) {
+	t.Setenv("KATA_AUTH_TOKEN", "")
+	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
+	t.Setenv("KATA_TRUSTED_ACTOR_HEADER", "X-Env-Actor")
+
+	home := t.TempDir()
+	t.Setenv("KATA_HOME", home)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"),
+		[]byte("[auth.proxy]\ntrusted_actor_header = \"X-Toml-Actor\"\n"), 0o600))
+	cfg, err := config.ReadDaemonConfig()
+	require.NoError(t, err)
+	require.Equal(t, "X-Env-Actor", cfg.Auth.Proxy.TrustedActorHeader,
+		"KATA_TRUSTED_ACTOR_HEADER must override config.toml")
+}
+
+func TestApplyDaemonConfigEnv_AuthProxyListeners(t *testing.T) {
+	t.Setenv("KATA_AUTH_TOKEN", "")
+	t.Setenv("KATA_TRUST_PRIVATE_NETWORK", "")
+	t.Setenv("KATA_TRUSTED_PROXY_LISTENERS",
+		"unix:///s1 , 100.64.0.5:7777 ,, ")
+
+	home := t.TempDir()
+	t.Setenv("KATA_HOME", home)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"),
+		[]byte("[auth.proxy]\ntrusted_proxy_listeners = [\"unix:///toml-only\"]\n"), 0o600))
+	cfg, err := config.ReadDaemonConfig()
+	require.NoError(t, err)
+	require.Equal(t,
+		[]string{"unix:///s1", "100.64.0.5:7777"},
+		cfg.Auth.Proxy.TrustedProxyListeners,
+		"KATA_TRUSTED_PROXY_LISTENERS must split on commas, trim, drop empties, override config.toml")
+}
