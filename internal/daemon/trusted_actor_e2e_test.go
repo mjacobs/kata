@@ -244,3 +244,38 @@ func TestTrustedProxyHeader_TokenAdminForbidden(t *testing.T) {
 		map[string]string{"X-Kata-Actor": "alice"})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode, "revoke body: %s", raw)
 }
+
+// TestTrustedProxyHeader_TokenAdminForbiddenWithoutHeader covers the absent-
+// header variant of the same boundary. A request on a trusted listener that
+// omits the actor header lands in PrincipalTrustedProxyAbsent, and
+// ensureTokenAdminAllowed must reject it just as firmly as the header-present
+// case. Without this test, a future change that allowed the absent-header
+// principal to bypass token admin (perhaps under the rationale "no actor was
+// claimed, so it's safe") would slip through. The header-present test and this
+// one together pin both trusted-proxy principal variants out of the token-admin
+// allowlist.
+func TestTrustedProxyHeader_TokenAdminForbiddenWithoutHeader(t *testing.T) {
+	ts := startTrustedProxyTestServer(t, "X-Kata-Actor")
+
+	body := map[string]any{
+		"actor": "alice",
+		"name":  "test-token",
+	}
+	resp, raw := doReq(t, ts, "POST", "/api/v1/tokens", body, nil)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "body: %s", raw)
+
+	var env struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &env))
+	assert.Equal(t, "token_admin_forbidden", env.Error.Code,
+		"trusted-proxy absent principals must also be rejected from token admin")
+
+	resp, raw = doReq(t, ts, "GET", "/api/v1/tokens", nil, nil)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "list body: %s", raw)
+
+	resp, raw = doReq(t, ts, "POST", "/api/v1/tokens/42/actions/revoke", nil, nil)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "revoke body: %s", raw)
+}
