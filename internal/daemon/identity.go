@@ -19,6 +19,15 @@ const (
 	// identity mode. It is not an attributed actor, but token-admin routes
 	// audit it as bootstrap/admin rather than as the target actor.
 	PrincipalStaticToken PrincipalKind = "static_token"
+	// PrincipalTrustedProxy is set by the trusted-proxy middleware when an
+	// accepted request on a trusted listener carries the configured actor
+	// header. The Principal.Actor field holds the verified header value.
+	PrincipalTrustedProxy PrincipalKind = "trusted_proxy"
+	// PrincipalTrustedProxyAbsent is set by the trusted-proxy middleware
+	// when a request on a trusted listener is missing the configured actor
+	// header (or its value is empty). Writes against this principal are
+	// rejected; reads pass through.
+	PrincipalTrustedProxyAbsent PrincipalKind = "trusted_proxy_absent"
 )
 
 // Principal is the request-local identity derived by auth middleware.
