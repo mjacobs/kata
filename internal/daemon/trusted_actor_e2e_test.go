@@ -169,3 +169,38 @@ func TestTrustedProxyHeader_ReadsNotBlocked(t *testing.T) {
 	resp, raw := doReq(t, ts, "GET", "/api/v1/health", nil, nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", raw)
 }
+
+// TestTrustedProxyHeader_ModeOffUnchanged verifies that with mode off (empty
+// TrustedActorHeader) the header is ignored and the body actor flows through
+// as it did before this feature landed. The middleware short-circuits before
+// checking the allowlist, so even a request that would otherwise look like a
+// trusted-proxy call is attributed to the body actor.
+func TestTrustedProxyHeader_ModeOffUnchanged(t *testing.T) {
+	// Mode off (empty TrustedActorHeader). The header is ignored, and the
+	// body actor is used as today.
+	ts := startTrustedProxyTestServer(t, "" /* mode off */)
+
+	projectID := trustedProxyCreateProject(t, ts, nil)
+	issueRef := trustedProxyCreateIssue(t, ts, projectID, nil)
+
+	body := map[string]any{
+		"actor":   "client-claim",
+		"reason":  "done",
+		"message": "mode off; body actor must be used.",
+		"source":  "tui",
+	}
+	resp, raw := doReq(t, ts, "POST",
+		"/api/v1/projects/"+strconv.FormatInt(projectID, 10)+"/issues/"+issueRef+"/actions/close",
+		body, map[string]string{"X-Kata-Actor": "should-be-ignored"})
+	require.Equal(t, http.StatusOK, resp.StatusCode, "body: %s", raw)
+
+	var payload struct {
+		Event *struct {
+			Actor string `json:"actor"`
+		} `json:"event"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	require.NotNil(t, payload.Event)
+	assert.Equal(t, "client-claim", payload.Event.Actor,
+		"mode off: header is ignored, body actor wins")
+}
