@@ -204,3 +204,43 @@ func TestTrustedProxyHeader_ModeOffUnchanged(t *testing.T) {
 	assert.Equal(t, "client-claim", payload.Event.Actor,
 		"mode off: header is ignored, body actor wins")
 }
+
+// TestTrustedProxyHeader_TokenAdminForbidden locks the cross-mode boundary:
+// even on a trusted listener, the trusted-proxy header cannot mint or list
+// tokens. The middleware overwrites whatever principal upstream set with
+// PrincipalTrustedProxy; ensureTokenAdminAllowed (PR #65) only admits
+// PrincipalBootstrap, PrincipalStaticToken, or no-principal, so the request
+// is rejected with 403 token_admin_forbidden.
+//
+// Without this test, a future change to ensureTokenAdminAllowed could silently
+// promote PrincipalTrustedProxy into the token-admin allowlist and the only
+// signal would be the absence of a test failure.
+func TestTrustedProxyHeader_TokenAdminForbidden(t *testing.T) {
+	ts := startTrustedProxyTestServer(t, "X-Kata-Actor")
+
+	body := map[string]any{
+		"actor": "alice",
+		"name":  "test-token",
+	}
+	resp, raw := doReq(t, ts, "POST", "/api/v1/tokens",
+		body, map[string]string{"X-Kata-Actor": "alice"})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "body: %s", raw)
+
+	var env struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &env))
+	assert.Equal(t, "token_admin_forbidden", env.Error.Code,
+		"trusted-proxy principals must not be allowed to mint or revoke tokens")
+
+	// And the same boundary holds for list and revoke.
+	resp, raw = doReq(t, ts, "GET", "/api/v1/tokens", nil,
+		map[string]string{"X-Kata-Actor": "alice"})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "list body: %s", raw)
+
+	resp, raw = doReq(t, ts, "POST", "/api/v1/tokens/42/actions/revoke", nil,
+		map[string]string{"X-Kata-Actor": "alice"})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode, "revoke body: %s", raw)
+}
