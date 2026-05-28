@@ -31,9 +31,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -X go.kenn.io/kata/internal/version.BuildDate=${DATE}" \
     -o /out/kata ./cmd/kata
 
-# Stage an empty data dir so the final COPY can own it as the nonroot uid; a
-# fresh volume mounted at KATA_HOME then inherits writable ownership.
-RUN mkdir -p /data
+# Stage the data dir with a .keep file so the final-stage COPY reliably
+# preserves the directory and its ownership across all BuildKit versions; a
+# fresh volume mounted at KATA_HOME then inherits writable ownership for the
+# nonroot uid.
+RUN mkdir -p /data && touch /data/.keep
 
 # Final stage. Distroless static nonroot: no shell, no package manager, runs
 # as uid 65532. Pinned by digest.
