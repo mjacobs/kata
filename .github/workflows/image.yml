@@ -16,6 +16,8 @@ on:
       - .dockerignore
       - docker-bake.hcl
       - .github/workflows/image.yml
+      - cmd/**
+      - internal/**
       - go.mod
       - go.sum
   push:
