@@ -109,10 +109,10 @@ func TestTrustedProxyHeader_CreditsHeaderActor(t *testing.T) {
 	// "proxy-user". A passing test proves attributedActor preferred the
 	// principal's actor over the body's.
 	body := map[string]any{
-		"actor":   "client-claim",
-		"reason":  "done",
-		"message": "verified end-to-end after the fix landed.",
-		"source":  "tui",
+		"actor":    "client-claim",
+		"reason":   "done",
+		"message":  "verified end-to-end after the trusted proxy actor fix landed.",
+		"evidence": []map[string]any{{"type": "commit", "sha": "abc1234"}},
 	}
 	resp, raw := doReq(t, ts, "POST",
 		"/api/v1/projects/"+strconv.FormatInt(projectID, 10)+"/issues/"+issueRef+"/actions/close",
@@ -278,4 +278,26 @@ func TestTrustedProxyHeader_TokenAdminForbiddenWithoutHeader(t *testing.T) {
 
 	resp, raw = doReq(t, ts, "POST", "/api/v1/tokens/42/actions/revoke", nil, nil)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode, "revoke body: %s", raw)
+}
+
+// TestTrustedProxyHeader_TUIBypassRequiresCloseValidation keeps the trusted-
+// proxy actor mode aligned with PR #65's token-derived identity rules: once the
+// actor is server-derived, a client-controlled source=tui flag must not bypass
+// close message/evidence validation.
+func TestTrustedProxyHeader_TUIBypassRequiresCloseValidation(t *testing.T) {
+	ts := startTrustedProxyTestServer(t, "X-Kata-Actor")
+
+	projectID := trustedProxyCreateProject(t, ts, map[string]string{"X-Kata-Actor": "setup"})
+	issueRef := trustedProxyCreateIssue(t, ts, projectID,
+		map[string]string{"X-Kata-Actor": "setup"})
+
+	body := map[string]any{
+		"actor":  "client-claim",
+		"reason": "done",
+		"source": "tui",
+	}
+	resp, raw := doReq(t, ts, "POST",
+		"/api/v1/projects/"+strconv.FormatInt(projectID, 10)+"/issues/"+issueRef+"/actions/close",
+		body, map[string]string{"X-Kata-Actor": "proxy-user"})
+	assertAPIError(t, resp.StatusCode, raw, http.StatusBadRequest, "validation")
 }

@@ -107,8 +107,11 @@ func tuiBypassAllowed(ctx context.Context, source, reason string) bool {
 	if source != "tui" || reason != "done" {
 		return false
 	}
-	if p, ok := PrincipalFromContext(ctx); ok && p.Kind == PrincipalDBToken {
-		return false
+	if p, ok := PrincipalFromContext(ctx); ok {
+		switch p.Kind {
+		case PrincipalDBToken, PrincipalTrustedProxy, PrincipalTrustedProxyAbsent:
+			return false
+		}
 	}
 	return true
 }
