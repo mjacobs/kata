@@ -2,6 +2,7 @@ package daemon_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -169,7 +170,7 @@ func TestImportEndpoint_SourceNewerUpdatesIssue(t *testing.T) {
 	assert.Equal(t, "done", *issue.ClosedReason)
 }
 
-func TestImportEndpoint_FederatedExistingIssueRequiresLease(t *testing.T) {
+func TestImportEndpoint_FederatedExistingIssueAllowsUnclaimedUpdate(t *testing.T) {
 	ctx := context.Background()
 	env := testenv.New(t)
 	project := createImportTestProject(t, env, "github.com/wesm/kata", "kata")
@@ -219,28 +220,156 @@ func TestImportEndpoint_FederatedExistingIssueRequiresLease(t *testing.T) {
 
 	resp, raw := envDoRaw(t, env, http.MethodPost, importEndpointPath(project.ID), update, nil)
 
-	assertAPIError(t, resp.StatusCode, raw, http.StatusConflict, "claim_required")
-	unchanged, err := env.DB.IssueByID(ctx, issue.ID)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(raw))
+	var out struct {
+		Updated int `json:"updated"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	assert.Equal(t, 1, out.Updated)
+	changed, err := env.DB.IssueByID(ctx, issue.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "Old title", unchanged.Title)
+	assert.Equal(t, "New title", changed.Title)
+}
+
+func TestImportEndpoint_FederatedExistingIssueDeniesOtherLeaseHolder(t *testing.T) {
+	ctx := context.Background()
+	env := testenv.New(t)
+	project := createImportTestProject(t, env, "github.com/wesm/kata", "kata")
+	initial := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{{
+			"external_id": "beads-1",
+			"title":       "Old title",
+			"body":        "old body",
+			"author":      "alice",
+			"status":      "open",
+			"created_at":  "2026-05-01T10:00:00Z",
+			"updated_at":  "2026-05-01T10:00:00Z",
+		}},
+	}
+	var first struct {
+		Items []struct {
+			IssueShortID string `json:"issue_short_id"`
+		} `json:"items"`
+	}
+	envPostJSON(t, env, importEndpointPath(project.ID), initial, &first)
+	require.Len(t, first.Items, 1)
+	issue, err := env.DB.IssueByShortID(ctx, project.ID, first.Items[0].IssueShortID, db.IncludeDeletedNo)
+	require.NoError(t, err)
+	_, err = env.DB.UpsertFederationBinding(ctx, db.FederationBinding{
+		ProjectID:            project.ID,
+		Role:                 db.FederationRoleHub,
+		HubProjectUID:        project.UID,
+		ReplayHorizonEventID: 1,
+		Enabled:              true,
+	})
+	require.NoError(t, err)
 
 	_, err = env.DB.AcquireClaim(ctx, db.AcquireClaimParams{
 		ProjectID: project.ID,
 		IssueRef:  issue.ShortID,
 		Principal: db.ClaimPrincipal{
 			HolderInstanceUID: env.DB.InstanceUID(),
-			Holder:            "importer",
+			Holder:            "other",
 			ClientKind:        "cli",
 		},
 		ClaimKind: "hard",
 		Now:       time.Now().UTC(),
 	})
 	require.NoError(t, err)
-	var out struct {
-		Updated int `json:"updated"`
+	update := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{{
+			"external_id": "beads-1",
+			"title":       "New title",
+			"body":        "new body",
+			"author":      "alice",
+			"status":      "open",
+			"created_at":  "2026-05-01T10:00:00Z",
+			"updated_at":  "2026-05-01T11:00:00Z",
+		}},
 	}
-	envPostJSON(t, env, importEndpointPath(project.ID), update, &out)
-	assert.Equal(t, 1, out.Updated)
+
+	resp, raw := envDoRaw(t, env, http.MethodPost, importEndpointPath(project.ID), update, nil)
+
+	assertAPIError(t, resp.StatusCode, raw, http.StatusConflict, "claim_denied")
+	unchanged, err := env.DB.IssueByID(ctx, issue.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Old title", unchanged.Title)
+}
+
+func TestImportEndpoint_FederatedCommentOnlyImportBypassesOtherLeaseHolder(t *testing.T) {
+	ctx := context.Background()
+	env := testenv.New(t)
+	project := createImportTestProject(t, env, "github.com/wesm/kata", "kata")
+	initial := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{{
+			"external_id": "beads-1",
+			"title":       "Imported",
+			"body":        "body",
+			"author":      "alice",
+			"status":      "open",
+			"created_at":  "2026-05-01T10:00:00Z",
+			"updated_at":  "2026-05-01T10:00:00Z",
+		}},
+	}
+	var first struct {
+		Items []struct {
+			IssueShortID string `json:"issue_short_id"`
+		} `json:"items"`
+	}
+	envPostJSON(t, env, importEndpointPath(project.ID), initial, &first)
+	require.Len(t, first.Items, 1)
+	issue, err := env.DB.IssueByShortID(ctx, project.ID, first.Items[0].IssueShortID, db.IncludeDeletedNo)
+	require.NoError(t, err)
+	_, err = env.DB.EnableProjectFederation(ctx, project.ID, "tester")
+	require.NoError(t, err)
+	_, err = env.DB.AcquireClaim(ctx, db.AcquireClaimParams{
+		ProjectID: project.ID,
+		IssueRef:  issue.ShortID,
+		Principal: db.ClaimPrincipal{
+			HolderInstanceUID: env.DB.InstanceUID(),
+			Holder:            "other",
+			ClientKind:        "cli",
+		},
+		ClaimKind: "hard",
+		Now:       time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	commentOnly := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{{
+			"external_id": "beads-1",
+			"title":       "Imported",
+			"body":        "body",
+			"author":      "alice",
+			"status":      "open",
+			"created_at":  "2026-05-01T10:00:00Z",
+			"updated_at":  "2026-05-01T10:00:00Z",
+			"comments": []map[string]any{{
+				"external_id": "c1",
+				"author":      "alice",
+				"body":        "append-only note",
+				"created_at":  "2026-05-01T10:01:00Z",
+			}},
+		}},
+	}
+
+	resp, raw := envDoRaw(t, env, http.MethodPost, importEndpointPath(project.ID), commentOnly, nil)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(raw))
+	var out struct {
+		Unchanged int `json:"unchanged"`
+		Comments  int `json:"comments"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	assert.Equal(t, 1, out.Unchanged)
+	assert.Equal(t, 1, out.Comments)
 }
 
 func TestImportEndpoint_FederatedIdempotentReimportDoesNotRequireLease(t *testing.T) {
@@ -324,6 +453,148 @@ func TestImportEndpoint_FederatedNewIssueLinkTargetDoesNotRequireTargetLease(t *
 
 	assert.Equal(t, 1, out.Created)
 	assert.Equal(t, 1, out.Links)
+}
+
+func TestImportEndpoint_FederatedImportLinkAddDeniesOtherPeerLeaseHolder(t *testing.T) {
+	ctx := context.Background()
+	env := testenv.New(t)
+	project := createImportTestProject(t, env, "github.com/wesm/kata", "kata")
+	parent := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{{
+			"external_id": "parent",
+			"title":       "Parent",
+			"body":        "parent body",
+			"author":      "alice",
+			"status":      "open",
+			"created_at":  "2026-05-01T10:00:00Z",
+			"updated_at":  "2026-05-01T10:00:00Z",
+		}},
+	}
+	envPostJSON(t, env, importEndpointPath(project.ID), parent, &struct{}{})
+	parentMapping, err := env.DB.ImportMappingBySource(ctx, project.ID, "beads", "issue", "parent")
+	require.NoError(t, err)
+	require.NotNil(t, parentMapping.IssueID)
+	parentIssue, err := env.DB.IssueByID(ctx, *parentMapping.IssueID)
+	require.NoError(t, err)
+	_, err = env.DB.EnableProjectFederation(ctx, project.ID, "tester")
+	require.NoError(t, err)
+	_, err = env.DB.AcquireClaim(ctx, db.AcquireClaimParams{
+		ProjectID: project.ID,
+		IssueRef:  parentIssue.ShortID,
+		Principal: db.ClaimPrincipal{
+			HolderInstanceUID: env.DB.InstanceUID(),
+			Holder:            "other",
+			ClientKind:        "cli",
+		},
+		ClaimKind: "hard",
+		Now:       time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	child := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{{
+			"external_id": "child",
+			"title":       "Child",
+			"body":        "child body",
+			"author":      "alice",
+			"status":      "open",
+			"created_at":  "2026-05-01T10:00:00Z",
+			"updated_at":  "2026-05-01T10:00:00Z",
+			"links": []map[string]any{{
+				"type":               "parent",
+				"target_external_id": "parent",
+			}},
+		}},
+	}
+
+	resp, raw := envDoRaw(t, env, http.MethodPost, importEndpointPath(project.ID), child, nil)
+
+	assertAPIError(t, resp.StatusCode, raw, http.StatusConflict, "claim_denied")
+	_, err = env.DB.ImportMappingBySource(ctx, project.ID, "beads", "issue", "child")
+	assert.ErrorIs(t, err, db.ErrNotFound)
+}
+
+func TestImportEndpoint_FederatedImportLinkRemovalDeniesOtherPeerLeaseHolder(t *testing.T) {
+	ctx := context.Background()
+	env := testenv.New(t)
+	project := createImportTestProject(t, env, "github.com/wesm/kata", "kata")
+	initial := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{
+			{
+				"external_id": "source",
+				"title":       "Source",
+				"body":        "source body",
+				"author":      "alice",
+				"status":      "open",
+				"created_at":  "2026-05-01T10:00:00Z",
+				"updated_at":  "2026-05-01T10:00:00Z",
+				"links": []map[string]any{{
+					"type":               "blocks",
+					"target_external_id": "peer",
+				}},
+			},
+			{
+				"external_id": "peer",
+				"title":       "Peer",
+				"body":        "peer body",
+				"author":      "alice",
+				"status":      "open",
+				"created_at":  "2026-05-01T10:00:00Z",
+				"updated_at":  "2026-05-01T10:00:00Z",
+			},
+		},
+	}
+	envPostJSON(t, env, importEndpointPath(project.ID), initial, &struct{}{})
+	sourceMapping, err := env.DB.ImportMappingBySource(ctx, project.ID, "beads", "issue", "source")
+	require.NoError(t, err)
+	require.NotNil(t, sourceMapping.IssueID)
+	peerMapping, err := env.DB.ImportMappingBySource(ctx, project.ID, "beads", "issue", "peer")
+	require.NoError(t, err)
+	require.NotNil(t, peerMapping.IssueID)
+	sourceIssue, err := env.DB.IssueByID(ctx, *sourceMapping.IssueID)
+	require.NoError(t, err)
+	peerIssue, err := env.DB.IssueByID(ctx, *peerMapping.IssueID)
+	require.NoError(t, err)
+	link, err := env.DB.LinkByEndpoints(ctx, sourceIssue.ID, peerIssue.ID, "blocks")
+	require.NoError(t, err)
+	_, err = env.DB.EnableProjectFederation(ctx, project.ID, "tester")
+	require.NoError(t, err)
+	_, err = env.DB.AcquireClaim(ctx, db.AcquireClaimParams{
+		ProjectID: project.ID,
+		IssueRef:  peerIssue.ShortID,
+		Principal: db.ClaimPrincipal{
+			HolderInstanceUID: env.DB.InstanceUID(),
+			Holder:            "other",
+			ClientKind:        "cli",
+		},
+		ClaimKind: "hard",
+		Now:       time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	updateWithoutLink := map[string]any{
+		"actor":  "importer",
+		"source": "beads",
+		"items": []map[string]any{{
+			"external_id": "source",
+			"title":       "Source without link",
+			"body":        "source body",
+			"author":      "alice",
+			"status":      "open",
+			"created_at":  "2026-05-01T10:00:00Z",
+			"updated_at":  "2026-05-01T11:00:00Z",
+		}},
+	}
+
+	resp, raw := envDoRaw(t, env, http.MethodPost, importEndpointPath(project.ID), updateWithoutLink, nil)
+
+	assertAPIError(t, resp.StatusCode, raw, http.StatusConflict, "claim_denied")
+	_, err = env.DB.LinkByID(ctx, link.ID)
+	assert.NoError(t, err)
 }
 
 func TestImportEndpoint_PriorityRoundtrips(t *testing.T) {

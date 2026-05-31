@@ -164,6 +164,48 @@ On each spoke:
    the local federation credentials file, and enables push only when `--push` is
    present.
 
+   If the spoke already has a non-federated local project that should join the
+   hub under the same name, opt in explicitly with `--adopt-existing`, which
+   requires `--push`:
+
+   ```bash
+   kata federation join --project fedlab \
+     --hub-url http://<private-hub-ip>:7787 \
+     --hub-project-id 1 \
+     --token ... \
+     --push \
+     --adopt-existing
+   ```
+
+   Adoption works even when the local project name differs from the hub project
+   name; choose the local project with `--project` and the hub with the hub
+   selector:
+
+   ```bash
+   kata federation join --project shared-foo \
+     --hub-url http://<private-hub-ip>:7787 \
+     --hub-project-id 1 \
+     --token ... \
+     --push \
+     --adopt-existing
+   ```
+
+   Adoption preserves the current state of local issues, including closed and
+   soft-deleted issues, comments, labels, metadata, priority, owner, and
+   same-project links. It does not preserve the old local event history.
+   Instead it removes those pre-adoption local events and queues fresh snapshots
+   for the hub with same-project links embedded in the snapshot payloads. After
+   adoption, existing issues are ordinary federated spoke issues. Future edits
+   remain local-first; use live hub leases only when you want exclusive
+   coordination.
+
+   Adoption is a current-state cutover rather than a history merge. Operators
+   who need the pre-adoption event timeline for audit or rollback context should
+   run a scoped JSONL export before `--adopt-existing`, for example
+   `kata --project <project> export --output <path>.jsonl`. The federated event
+   stream starts from the adoption snapshots; kata does not currently retain a
+   separate in-product archive of pre-adoption events.
+
 Enrollment capabilities and local spoke behavior are separate knobs:
 `--capabilities pull,push,lease` on the hub says what the token may do, while
 `--push` on the spoke says this replica should actually push local-origin events
@@ -172,8 +214,8 @@ spoke remains pull-only and the CLI prints a warning.
 
 The transport routes use enrollment bearer tokens. Local operator routes,
 including `kata federation status`, quarantine skip, force-release, and purge,
-use the normal daemon local/admin auth surface. Federated hub purge also
-requires the acting actor to hold the live issue lease; an operator can
+use the normal daemon local/admin auth surface. Federated hub purge uses the
+same live-lease conflict gate as other issue mutations; an operator can
 force-release first when an abandoned lease blocks destructive maintenance.
 
 The daemon federation runner polls every 30 seconds by default. For tests,
@@ -231,18 +273,31 @@ requests to the hub using an enrollment token with `claim` capability. The hub
 derives `holder_instance_uid` from that enrollment token; clients provide the
 human-readable holder string.
 
-For federated projects, mutations of existing issues, including comments,
-require a live lease. Creating new issues does not require a lease. Spokes use
-their cached lease state to gate local writes. When online, stale status is
-refreshed from the hub. When offline, cached hard leases can still be used so
-work is not lost. Timed leases expire by hub time.
+Leases exist for agent coordination, not for general edit permission. An agent
+acquires a lease to signal "I am actively working this issue" and to get
+temporary exclusivity against other non-comment mutations while the lease is
+live. Status and audit surfaces can then show who is actively working. A lease
+does not replace durable `owner`, does not serialize all collaboration, and is
+not required before ordinary federated edits.
+
+For federated projects, ordinary edits of existing issues are local-first and
+converge by LWW. Creating new issues is also local-first. A lease is optional
+coordination: when another holder has a live lease on an affected existing
+issue, non-comment mutations are denied until the lease is released or expires.
+Comments bypass leases because they are append-only.
+
+Spokes refresh cached lease state before checking exclusivity when online.
+When offline, cached hard leases can still be used as a continuity hint, but
+they are not proof that exclusivity still holds. Timed leases expire by hub
+time and stop blocking edits once expired.
 
 The hub checks pushed work against the live lease state at ingest time. Work
-that is not covered is not dropped; the hub records `claim.violated`. This is
-best-effort, not a causal proof that the work was unauthorized when originally
-performed. An offline edit that was covered at edit time can arrive after a
-release or force-release and be marked violated because the hub checks current
-state during ingest.
+that conflicts with another holder's live lease is not dropped; the hub records
+`claim.violated`. Work on unleased issues is normal and is not a violation.
+This is best-effort, not a causal proof that the work was unauthorized when
+originally performed. An offline edit that was covered at edit time can arrive
+after another holder acquires a lease and be marked violated because the hub
+checks current state during ingest.
 
 `kata show` surfaces the current lease and recent unresolved lease violations
 for a federated issue. `kata federation status` shows project-level counts and
@@ -256,6 +311,8 @@ kata federation enable --project <project>
 kata federation enroll --project <project> --spoke-instance <uid> --hub-url <url>
 kata federation join --project <project> --hub-url <url> --hub-project-id <id> \
   --token <token> [--push]
+kata federation join --project <existing-project> --hub-url <url> --hub-project-id <id> \
+  --token <token> --push --adopt-existing
 kata federation enrollments list
 kata federation revoke <enrollment-id>
 kata federation status
@@ -356,15 +413,15 @@ outage, a hub operator can force-release the lease or another actor can acquire
 a later lease. When the offline work reconnects, the hub keeps the data but can
 record `claim.violated`.
 
-Use a shared daemon when leases must be enforced strictly online and stale
-offline leases are unacceptable.
+Use a shared daemon when every write must be serialized through one online
+authority and stale offline lease state is unacceptable.
 
 ### Lease Violation Signals Are Best-Effort
 
 Violation annotation checks live hub lease state at ingest time, not historical
 lease state at the event's HLC timestamp. It is an operational signal for
-"work arrived without currently valid coverage", not a complete audit proof of
-user intent or causal authorization.
+"work arrived while another holder currently has a live lease", not a complete
+audit proof of user intent or causal authorization.
 
 Use a shared daemon when lease compliance must be decided at the exact write
 time.

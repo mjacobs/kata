@@ -213,6 +213,8 @@ kata federation enable --project <project>
 kata federation enroll --project <project> --spoke-instance <uid> --hub-url <url>
 kata federation join --project <project> --hub-url <url> --hub-project-id <id> \
   --token <token> [--push]
+kata federation join --project <existing-project> --hub-url <url> \
+  --hub-project-id <id> --token <token> --push --adopt-existing
 kata federation status
 kata federation enrollments list
 kata federation revoke <enrollment-id>
@@ -221,7 +223,16 @@ kata federation lease release <issue-ref>
 kata federation quarantine skip <id> --confirm "SKIP FEDERATION BATCH <id>" --reason <text>
 ```
 
+`--adopt-existing` is a current-state cutover. It removes the local project's
+pre-adoption event history from the live event stream and queues fresh snapshots
+for federation. Run `kata --project <project> export --output <path>.jsonl`
+first if you need to retain that local event timeline.
+
 Federation is an operator workflow. Most users never need these commands.
+Issue edits on push-enabled federated spokes remain local-first; use
+`kata federation lease acquire` only when you want exclusive coordination on an
+issue. A live lease held by another actor blocks non-comment mutations until it
+is released or expires.
 
 ## Ref forms
 
