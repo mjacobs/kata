@@ -157,6 +157,110 @@ func TestImportV1FillsUIDsDeterministically(t *testing.T) {
 	assert.Equal(t, fmt.Sprint(db.CurrentSchemaVersion()), schemaVersion)
 }
 
+func TestImportV1NormalizesGoStringIssueAndCommentTimestamps(t *testing.T) {
+	ctx := context.Background()
+	target := openImportTargetDB(t)
+
+	require.NoError(t, importJSONL(ctx, target,
+		validExportVersion,
+		validV1ProjectRow,
+		`{"kind":"issue","data":{"id":1,"project_id":1,"number":1,"title":"v1 issue","body":"","status":"open","closed_reason":null,"owner":null,"author":"tester","created_at":"2026-05-04 00:21:07 +0000 UTC","updated_at":"2026-05-04 00:21:07 +0000 UTC","closed_at":null,"deleted_at":null}}`,
+		`{"kind":"comment","data":{"id":1,"issue_id":1,"author":"tester","body":"legacy note","created_at":"2026-05-04 00:21:07 +0000 UTC"}}`,
+	))
+
+	var commentUID string
+	require.NoError(t, target.QueryRowContext(ctx,
+		`SELECT uid FROM comments WHERE id = 1`).Scan(&commentUID))
+	assert.True(t, uid.Valid(commentUID), "invalid filled comment uid %q", commentUID)
+
+	issue, err := target.IssueByID(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "2026-05-04T00:21:07.000Z", issue.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z"))
+	assert.Equal(t, "2026-05-04T00:21:07.000Z", issue.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z"))
+
+	var issueCreatedAt, issueUpdatedAt, commentCreatedAt string
+	require.NoError(t, target.QueryRowContext(ctx,
+		`SELECT CAST(created_at AS TEXT), CAST(updated_at AS TEXT) FROM issues WHERE id = 1`,
+	).Scan(&issueCreatedAt, &issueUpdatedAt))
+	require.NoError(t, target.QueryRowContext(ctx,
+		`SELECT CAST(created_at AS TEXT) FROM comments WHERE id = 1`,
+	).Scan(&commentCreatedAt))
+	assert.Equal(t, "2026-05-04T00:21:07.000Z", issueCreatedAt)
+	assert.Equal(t, "2026-05-04T00:21:07.000Z", issueUpdatedAt)
+	assert.Equal(t, "2026-05-04T00:21:07.000Z", commentCreatedAt)
+}
+
+func TestImportV1NormalizesFractionalGoStringTimestamps(t *testing.T) {
+	ctx := context.Background()
+	target := openImportTargetDB(t)
+
+	require.NoError(t, importJSONL(ctx, target,
+		validExportVersion,
+		validV1ProjectRow,
+		`{"kind":"issue","data":{"id":1,"project_id":1,"number":1,"title":"v1 issue","body":"","status":"open","closed_reason":null,"owner":null,"author":"tester","created_at":"2026-05-04 00:21:07.123 +0000 UTC","updated_at":"2026-05-04 00:21:07.123 +0000 UTC","closed_at":null,"deleted_at":null}}`,
+		`{"kind":"comment","data":{"id":1,"issue_id":1,"author":"tester","body":"legacy note","created_at":"2026-05-04 00:21:07.123 +0000 UTC"}}`,
+	))
+
+	var issueCreatedAt, issueUpdatedAt, commentCreatedAt string
+	require.NoError(t, target.QueryRowContext(ctx,
+		`SELECT CAST(created_at AS TEXT), CAST(updated_at AS TEXT) FROM issues WHERE id = 1`,
+	).Scan(&issueCreatedAt, &issueUpdatedAt))
+	require.NoError(t, target.QueryRowContext(ctx,
+		`SELECT CAST(created_at AS TEXT) FROM comments WHERE id = 1`,
+	).Scan(&commentCreatedAt))
+	assert.Equal(t, "2026-05-04T00:21:07.123Z", issueCreatedAt)
+	assert.Equal(t, "2026-05-04T00:21:07.123Z", issueUpdatedAt)
+	assert.Equal(t, "2026-05-04T00:21:07.123Z", commentCreatedAt)
+}
+
+func TestImportV1NormalizesGoStringEventTimestampForStats(t *testing.T) {
+	ctx := context.Background()
+	target := openImportTargetDB(t)
+
+	require.NoError(t, importJSONL(ctx, target,
+		validExportVersion,
+		validV1ProjectRow,
+		`{"kind":"issue","data":{"id":1,"project_id":1,"number":1,"title":"v1 issue","body":"","status":"open","closed_reason":null,"owner":null,"author":"tester","created_at":"2026-05-04T00:21:07.000Z","updated_at":"2026-05-04T00:21:07.000Z","closed_at":null,"deleted_at":null}}`,
+		`{"kind":"event","data":{"id":1,"project_id":1,"project_identity":"github.com/wesm/kata","issue_id":1,"issue_number":1,"related_issue_id":null,"type":"issue.created","actor":"tester","payload":{},"created_at":"2026-05-04 00:21:07 +0000 UTC"}}`,
+	))
+
+	stats, err := target.BatchProjectStats(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, stats[1].LastEventAt, "imported Go-string event timestamp must participate in stats")
+	assert.Equal(t, "2026-05-04T00:21:07.000Z",
+		stats[1].LastEventAt.UTC().Format("2006-01-02T15:04:05.000Z"))
+}
+
+func TestImportCurrentVersionRejectsEventHashForPreNormalizedTimestamp(t *testing.T) {
+	ctx := context.Background()
+	target := openImportTargetDB(t)
+	projectUID := "01HZZZZZZZZZZZZZZZZZZZZZ11"
+	eventUID := "01HZNQ7VFPK1XGD8R5MABCD4EX"
+	originUID := "01HZNQ7VFPK1XGD8R5MABCD4EY"
+	createdAt := "2026-05-04 00:21:07 +0000 UTC"
+	hash, err := db.EventContentHash(db.EventHashInput{
+		UID:               eventUID,
+		OriginInstanceUID: originUID,
+		ProjectUID:        projectUID,
+		Type:              "project.imported",
+		Actor:             "tester",
+		HLCPhysicalMS:     1777854067000,
+		HLCCounter:        1,
+		CreatedAt:         createdAt,
+		Payload:           []byte(`{}`),
+	})
+	require.NoError(t, err)
+
+	err = importJSONL(ctx, target,
+		fmt.Sprintf(`{"kind":"meta","data":{"key":"export_version","value":"%d"}}`, db.CurrentSchemaVersion()),
+		`{"kind":"project","data":{"id":1,"uid":"`+projectUID+`","name":"kata","metadata":{},"revision":1,"created_at":"2026-05-04T00:00:00.000Z"}}`,
+		`{"kind":"event","data":{"id":1,"uid":"`+eventUID+`","origin_instance_uid":"`+originUID+`","project_id":1,"project_name":"kata","issue_id":null,"issue_uid":null,"related_issue_id":null,"related_issue_uid":null,"type":"project.imported","actor":"tester","payload":{},"hlc_physical_ms":1777854067000,"hlc_counter":1,"content_hash":"`+hash+`","created_at":"`+createdAt+`"}}`,
+	)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "content_hash")
+}
+
 func TestImportLegacyEventSnapshotsUseFinalProjectName(t *testing.T) {
 	ctx := context.Background()
 	target := openImportTargetDB(t)

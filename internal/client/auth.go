@@ -28,11 +28,11 @@ func resolveAuthToken() string {
 func resolveAuthConfig() config.AuthConfig {
 	envToken := strings.TrimSpace(os.Getenv("KATA_AUTH_TOKEN"))
 	envTrust := config.EnvTruthy("KATA_TRUST_PRIVATE_NETWORK")
-	cfg, err := config.ReadDaemonConfig()
-	if err != nil || cfg == nil {
+	auth, err := config.ReadAuthConfig()
+	if err != nil {
 		return config.AuthConfig{Token: envToken, TrustPrivateNetwork: envTrust}
 	}
-	return cfg.Auth
+	return auth
 }
 
 // withBearer wraps base with bearer-token injection when token is
@@ -52,4 +52,19 @@ func withBearer(base http.RoundTripper, token, origin string, trustPrivateNetwor
 // client construction time to fail fast before any request is built.
 func checkBearerTargetSafe(baseURL string, trustPrivateNetwork bool) (string, error) {
 	return config.BearerOriginForBaseURLWithTrust(baseURL, trustPrivateNetwork)
+}
+
+func explicitBearerTransport(
+	base http.RoundTripper,
+	token, baseURL string,
+	allowInsecure bool,
+) (http.RoundTripper, error) {
+	if token == "" {
+		return base, nil
+	}
+	origin, err := checkBearerTargetSafe(baseURL, allowInsecure)
+	if err != nil {
+		return nil, err
+	}
+	return withBearer(base, token, origin, allowInsecure), nil
 }

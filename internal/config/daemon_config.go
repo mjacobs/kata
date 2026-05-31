@@ -20,6 +20,13 @@ type DaemonConfig struct {
 	// --listen flag is supplied. Same syntax as the flag (host:port).
 	// An empty value (or a missing file) means "default Unix socket".
 	Listen string `toml:"listen"`
+	// ActiveDaemon names the daemon catalog entry selected by default.
+	// Empty preserves the legacy implicit endpoint resolution.
+	ActiveDaemon string `toml:"active_daemon"`
+	// Daemons is the named daemon catalog. The TUI resolves its default
+	// target here; other clients may also read this shared catalog, so it is
+	// top-level rather than nested under [tui].
+	Daemons []CatalogDaemonConfig `toml:"daemon"`
 	// TUI carries client-side interactive UI defaults. Unlike remote
 	// daemon overrides, these are user preferences and belong in
 	// <KATA_HOME>/config.toml.
@@ -57,6 +64,21 @@ type TUIConfig struct {
 	// Mouse enables Bubble Tea mouse cell-motion capture and additive
 	// click/wheel navigation. Default false preserves native selection.
 	Mouse bool `toml:"mouse"`
+}
+
+// CatalogDaemonConfig is a single named entry in the daemon catalog
+// (top-level [[daemon]] in <KATA_HOME>/config.toml).
+type CatalogDaemonConfig struct {
+	Name  string `toml:"name"`
+	Local bool   `toml:"local"`
+	URL   string `toml:"url"`
+	// Token is the inline bearer token, mutually exclusive with TokenEnv.
+	Token string `toml:"token"`
+	// TokenEnv names an environment variable holding the bearer token, so
+	// the secret stays out of the config file. Resolved by clients only when
+	// they select this daemon target.
+	TokenEnv      string `toml:"token_env"`
+	AllowInsecure bool   `toml:"allow_insecure"`
 }
 
 // CloseConfig is the [close] block of <KATA_HOME>/config.toml.
@@ -112,6 +134,7 @@ func ReadDaemonConfig() (*DaemonConfig, error) {
 		cfg.Listen = strings.TrimSpace(cfg.Listen)
 		cfg.Auth.Token = strings.TrimSpace(cfg.Auth.Token)
 		cfg.Auth.Proxy.TrustedActorHeader = strings.TrimSpace(cfg.Auth.Proxy.TrustedActorHeader)
+		trimDaemonCatalog(&cfg)
 	case errors.Is(err, os.ErrNotExist):
 		// Absent file: fall through with zero-value cfg. Env merge and
 		// validation below still apply so an env-only misconfig is
@@ -123,7 +146,83 @@ func ReadDaemonConfig() (*DaemonConfig, error) {
 	if err := validateAuthProxy(cfg.Auth.Proxy); err != nil {
 		return nil, err
 	}
+	if err := normalizeDaemonCatalog(&cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
+}
+
+// ReadAuthConfig parses only the daemon auth settings from <KATA_HOME>/config.toml.
+// It intentionally skips daemon-catalog normalization so auth-only clients do not
+// lose [auth] settings because an unrelated catalog entry is unavailable.
+func ReadAuthConfig() (AuthConfig, error) {
+	path, err := DaemonConfigPath()
+	if err != nil {
+		return AuthConfig{}, err
+	}
+	var cfg DaemonConfig
+	data, err := os.ReadFile(path) //nolint:gosec // path is derived from KATA_HOME, not user input
+	switch {
+	case err == nil:
+		meta, err := toml.Decode(string(data), &cfg)
+		if err != nil {
+			return AuthConfig{}, fmt.Errorf("parse %s: %w", path, err)
+		}
+		if u := meta.Undecoded(); len(u) > 0 {
+			keys := make([]string, len(u))
+			for i, k := range u {
+				keys[i] = k.String()
+			}
+			return AuthConfig{}, fmt.Errorf("parse %s: unknown key(s): %s", path, strings.Join(keys, ", "))
+		}
+		cfg.Auth.Token = strings.TrimSpace(cfg.Auth.Token)
+		cfg.Auth.Proxy.TrustedActorHeader = strings.TrimSpace(cfg.Auth.Proxy.TrustedActorHeader)
+	case errors.Is(err, os.ErrNotExist):
+		// Absent file: env overlays below still apply.
+	default:
+		return AuthConfig{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	applyDaemonConfigEnv(&cfg)
+	if err := validateAuthProxy(cfg.Auth.Proxy); err != nil {
+		return AuthConfig{}, err
+	}
+	return cfg.Auth, nil
+}
+
+func trimDaemonCatalog(cfg *DaemonConfig) {
+	cfg.ActiveDaemon = strings.TrimSpace(cfg.ActiveDaemon)
+	for i := range cfg.Daemons {
+		cfg.Daemons[i].Name = strings.TrimSpace(cfg.Daemons[i].Name)
+		cfg.Daemons[i].URL = strings.TrimSpace(cfg.Daemons[i].URL)
+		cfg.Daemons[i].Token = strings.TrimSpace(cfg.Daemons[i].Token)
+		cfg.Daemons[i].TokenEnv = strings.TrimSpace(cfg.Daemons[i].TokenEnv)
+	}
+}
+
+func normalizeDaemonCatalog(cfg *DaemonConfig) error {
+	names := make(map[string]struct{}, len(cfg.Daemons))
+	for i := range cfg.Daemons {
+		d := &cfg.Daemons[i]
+		if d.Name == "" {
+			return errors.New("daemon: name is required")
+		}
+		if _, ok := names[d.Name]; ok {
+			return fmt.Errorf("daemon: duplicate daemon name %q", d.Name)
+		}
+		names[d.Name] = struct{}{}
+		if d.Local == (d.URL != "") {
+			return fmt.Errorf("daemon %q: exactly one of local or url is required", d.Name)
+		}
+		if d.Token != "" && d.TokenEnv != "" {
+			return fmt.Errorf("daemon %q: token and token_env are mutually exclusive", d.Name)
+		}
+	}
+	if cfg.ActiveDaemon != "" {
+		if _, ok := names[cfg.ActiveDaemon]; !ok {
+			return fmt.Errorf("active_daemon %q is not in daemon catalog", cfg.ActiveDaemon)
+		}
+	}
+	return nil
 }
 
 // validateAuthProxy rejects the dangerous partial-config case where the

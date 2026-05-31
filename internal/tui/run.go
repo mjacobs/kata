@@ -7,13 +7,65 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/term"
-
-	"go.kenn.io/kata/internal/client"
 )
+
+const defaultHTTPTimeout = 5 * time.Second
+const remoteProbeTimeout = time.Second
+
+type sseStarter func(context.Context, sseClient, string, *int64, chan tea.Msg, uint64)
+
+type sseRestartState struct {
+	root   context.Context
+	start  sseStarter
+	mu     sync.Mutex
+	latest uint64
+	cancel context.CancelFunc
+}
+
+func newSSERestartState(root context.Context, cancel context.CancelFunc, start sseStarter) *sseRestartState {
+	return &sseRestartState{
+		root:   root,
+		start:  start,
+		cancel: cancel,
+	}
+}
+
+func (s *sseRestartState) restart(conn daemonConnection, gen uint64, ch chan tea.Msg) tea.Cmd {
+	s.mu.Lock()
+	if gen > s.latest {
+		s.latest = gen
+	}
+	s.mu.Unlock()
+	return func() tea.Msg {
+		s.mu.Lock()
+		if gen != s.latest {
+			s.mu.Unlock()
+			return nil
+		}
+		s.cancel()
+		sseCtx, cancel := context.WithCancel(s.root)
+		s.cancel = cancel
+		shouldStart := !conn.init.scope.empty && conn.sseHC != nil
+		s.mu.Unlock()
+
+		if shouldStart {
+			s.start(sseCtx, conn.sseHC, conn.endpoint, sseProjectScope(conn.init.scope), ch, gen)
+		}
+		return nil
+	}
+}
+
+func (s *sseRestartState) cancelCurrent() {
+	s.mu.Lock()
+	cancel := s.cancel
+	s.mu.Unlock()
+	cancel()
+}
 
 // Options controls TUI behavior. Stable across versions; new fields
 // must be optional.
@@ -44,15 +96,21 @@ func Run(ctx context.Context, opts Options) error {
 	if !isTerminal(os.Stdin) || !outputIsTerminal(opts.Stdout) {
 		return errNotATTY
 	}
-	c, sseHC, bi, endpoint, err := bootClient(ctx, opts)
+	c, sseHC, bi, endpoint, conn, err := bootClient(ctx, opts)
 	if err != nil {
 		return err
 	}
-	m := buildRunModel(opts, c, bi)
+	m := buildRunModel(opts, c, bi, conn)
 	sseCtx, cancelSSE := context.WithCancel(ctx)
-	defer cancelSSE()
+	startSSE := func(ctx context.Context, hc sseClient, endpoint string, projectID *int64, ch chan tea.Msg, gen uint64) {
+		go startSSEForConnection(ctx, hc, endpoint, projectID, ch, gen)
+	}
+	sseRestart := newSSERestartState(ctx, cancelSSE, startSSE)
+	defer sseRestart.cancelCurrent()
+	m.connGen = 1
+	m.sseRestart = sseRestart.restart
 	if !bi.scope.empty && sseHC != nil {
-		go startSSE(sseCtx, sseHC, endpoint, sseProjectScope(bi.scope), m.sseCh)
+		startSSE(sseCtx, sseHC, endpoint, sseProjectScope(bi.scope), m.sseCh, m.connGen)
 	}
 	if _, err := tea.NewProgram(m, programOpts(ctx, opts)...).Run(); err != nil {
 		return err
@@ -64,7 +122,7 @@ func Run(ctx context.Context, opts Options) error {
 // scope, and view. When the boot path landed on viewProjects, the
 // pre-fetched project rows are seeded into the cache maps so the first
 // frame renders with stats.
-func buildRunModel(opts Options, c *Client, bi bootInit) Model {
+func buildRunModel(opts Options, c *Client, bi bootInit, conns ...daemonConnection) Model {
 	m := initialModel(opts)
 	// Guard against a typed-nil *Client becoming a non-nil KataAPI:
 	// only assign when c carries a value, so m.api stays a true nil
@@ -74,6 +132,10 @@ func buildRunModel(opts Options, c *Client, bi bootInit) Model {
 	}
 	m.scope = bi.scope
 	m.view = bi.view
+	if len(conns) > 0 {
+		m.activeDaemon = conns[0].target
+		m.daemonTargets = conns[0].catalog
+	}
 	if len(bi.projects) > 0 {
 		m.projectsByID = make(map[int64]string, len(bi.projects))
 		m.projectIdentByID = make(map[int64]string, len(bi.projects))
@@ -131,28 +193,12 @@ func sseProjectScope(_ scope) *int64 {
 // response-header ceiling) so a long-lived stream isn't reaped after 5s.
 // We re-use NewHTTPClient with ResponseHeaderTimeout instead of building
 // a bespoke transport so unix-socket dialing stays in one place.
-func bootClient(ctx context.Context, _ Options) (*Client, *http.Client, bootInit, string, error) {
-	endpoint, err := client.EnsureRunning(ctx)
+func bootClient(ctx context.Context, opts Options) (*Client, *http.Client, bootInit, string, daemonConnection, error) {
+	conn, err := bootDaemonConnection(ctx, opts)
 	if err != nil {
-		return nil, nil, bootInit{}, "", err
+		return nil, nil, bootInit{}, "", daemonConnection{}, err
 	}
-	hc, err := client.NewHTTPClient(ctx, endpoint,
-		client.Opts{Timeout: 5 * time.Second})
-	if err != nil {
-		return nil, nil, bootInit{}, "", err
-	}
-	sseHC, err := client.NewHTTPClient(ctx, endpoint,
-		client.Opts{ResponseHeaderTimeout: client.SSEHandshakeTimeout})
-	if err != nil {
-		return nil, nil, bootInit{}, "", err
-	}
-	c := NewClient(endpoint, hc)
-	cwd, _ := os.Getwd()
-	bi, err := bootResolveScope(ctx, c, cwd)
-	if err != nil {
-		return nil, nil, bootInit{}, "", err
-	}
-	return c, sseHC, bi, endpoint, nil
+	return conn.api, conn.sseHC, conn.init, conn.endpoint, conn, nil
 }
 
 // scope describes the issue-set the TUI is browsing. Exactly one of

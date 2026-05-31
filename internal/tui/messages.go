@@ -7,6 +7,7 @@ import "time"
 // Model.populateCache can drop stale responses that arrive after a
 // scope toggle or filter change.
 type initialFetchMsg struct {
+	connGen     uint64
 	dispatchKey cacheKey
 	issues      []Issue
 	err         error
@@ -16,6 +17,7 @@ type initialFetchMsg struct {
 // refetch. dispatchKey captures the scope/filter at dispatch time so
 // Model.populateCache can drop stale responses — see initialFetchMsg.
 type refetchedMsg struct {
+	connGen     uint64
 	dispatchKey cacheKey
 	issues      []Issue
 	err         error
@@ -61,13 +63,16 @@ type linksFetchedMsg struct {
 // The top-level Model handles it: switches m.view to viewDetail, seeds
 // m.detail.issue, and dispatches the three concurrent tab fetches.
 type openDetailMsg struct {
-	issue Issue
+	connGen uint64
+	issue   Issue
 }
 
 // popDetailMsg reverts the top-level Model from viewDetail back to
 // viewList. The list cursor and filter state are preserved because
 // listModel is held by value and never reset on the round trip.
-type popDetailMsg struct{}
+type popDetailMsg struct {
+	connGen uint64
+}
 
 // openInputMsg asks the top-level Model to open an input shell of
 // the given kind. Sub-views emit this rather than constructing the
@@ -97,7 +102,8 @@ type openInputMsg struct {
 // daemon's path resolver — the same wire shape that any client-side
 // fetch path uses.
 type jumpDetailMsg struct {
-	ref string
+	connGen uint64
+	ref     string
 }
 
 // mutationDoneMsg is the result of any single mutation (create now,
@@ -125,6 +131,7 @@ type jumpDetailMsg struct {
 // close form B, misroute as origin=detail, or fire an unrelated
 // batchLabelRefresh against form A's project. Jobs 242/244.
 type mutationDoneMsg struct {
+	connGen uint64
 	origin  string
 	gen     int64
 	formGen int64
@@ -165,6 +172,7 @@ type editorReturnedMsg struct {
 // the old or new parent's pane would stay stale until a manual
 // refresh after a parent replace.
 type eventReceivedMsg struct {
+	gen             uint64
 	eventType       string
 	projectID       int64
 	projectUID      string
@@ -221,10 +229,11 @@ type linksChangedParents struct {
 // later dispatch under the same pid bumps the cache's gen, and any
 // older response arriving after must NOT overwrite the newer state).
 type labelsFetchedMsg struct {
-	pid    int64
-	gen    int64
-	labels []LabelCount
-	err    error
+	connGen uint64
+	pid     int64
+	gen     int64
+	labels  []LabelCount
+	err     error
 }
 
 // projectsLoadedMsg is delivered after a /api/v1/projects fetch returns.
@@ -241,6 +250,7 @@ type labelsFetchedMsg struct {
 // variant) leaves gen=0 since it does not participate in the stale-flip
 // race. Spec §6.3.
 type projectsLoadedMsg struct {
+	connGen  uint64
 	projects map[int64]string
 	idents   map[int64]string
 	stats    map[int64]ProjectStatsSummary
@@ -258,12 +268,22 @@ type projectsLoadedMsg struct {
 // consumer already uses to update its Last-Event-ID resume cursor — is
 // the authoritative checkpoint. A second copy of the same value on the
 // envelope would invite drift if either path lagged.
-type resetRequiredMsg struct{}
+type resetRequiredMsg struct{ gen uint64 }
 
 // sseStatusMsg carries connection-state transitions from the SSE
 // goroutine to the TEA loop so the status bar can render the
 // reconnect indicator.
-type sseStatusMsg struct{ state sseConnState }
+type sseStatusMsg struct {
+	gen   uint64
+	state sseConnState
+}
+
+type daemonSwitchResultMsg struct {
+	attempt uint64
+	conn    daemonConnection
+	target  daemonTarget
+	err     error
+}
 
 // sseConnState is the SSE consumer's connection state.
 type sseConnState int
