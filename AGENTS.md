@@ -42,7 +42,7 @@ Closing an issue asserts that the work is complete. This is a stronger
 claim than a comment. If the work is not actually done, DO NOT close.
 Instead:
 
-    kata edit <ref> --label needs-review
+    kata label add <ref> needs-review
     kata comment <ref> --body "what was attempted, what remains"
 
 Close each issue as soon as its work is verified, not at the end of a
@@ -102,5 +102,6 @@ A daemon can serve clients on other hosts over a private network:
 
 When hosted on a PaaS that follows the Heroku-style `$PORT` contract
 (Cloud Run, Render, Fly.io, Railway, App Engine, etc.), the daemon
-binds `0.0.0.0:$PORT`. See [`docs/hosted-mode.md`](docs/hosted-mode.md)
-for the required env, health probes, shutdown, and persistence caveats.
+binds `0.0.0.0:$PORT`. See
+[`docs/operations/hosted-mode.md`](docs/operations/hosted-mode.md) for the
+required env, health probes, shutdown, and persistence caveats.
