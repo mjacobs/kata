@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	gitcmd "go.kenn.io/kit/git/cmd"
+	gitremote "go.kenn.io/kit/git/remote"
 	gitrepo "go.kenn.io/kit/git/repo"
 )
 
@@ -243,9 +244,6 @@ func readGitRemote(ctx context.Context, gitRoot string) (string, error) {
 
 var gitRunner = gitcmd.New()
 
-// scpLikeRE matches "user@host:path[/...]" SCP-style git URLs.
-var scpLikeRE = regexp.MustCompile(`^([^@\s]+)@([^:\s]+):(.+)$`)
-
 // NormalizeRemoteURL strips credentials, normalizes SSH↔HTTPS, drops trailing
 // .git, and returns "host/path" form (e.g. "github.com/wesm/kata").
 // Percent-encoded characters are decoded and spaces replaced with hyphens so
@@ -256,25 +254,13 @@ func NormalizeRemoteURL(raw string) (string, error) {
 	if raw == "" {
 		return "", fmt.Errorf("empty remote url")
 	}
-	var result string
-	if m := scpLikeRE.FindStringSubmatch(raw); m != nil {
-		host := m[2]
-		path := strings.TrimSuffix(m[3], ".git")
-		result = host + "/" + path
-	} else {
-		u, err := url.Parse(raw)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			return "", fmt.Errorf("parse remote url %q: not a recognized form", raw)
-		}
-		host := u.Host
-		if at := strings.LastIndex(host, "@"); at >= 0 {
-			host = host[at+1:]
-		}
-		path := strings.TrimSuffix(strings.TrimPrefix(u.Path, "/"), ".git")
-		if path == "" {
-			return host, nil
-		}
-		result = host + "/" + path
+	host := gitremote.RemoteHost(raw)
+	if host == "" {
+		return "", fmt.Errorf("parse remote url %q: not a recognized form", raw)
+	}
+	result := host
+	if path := gitremote.RemoteRepoPath(raw); path != "" {
+		result += "/" + path
 	}
 	if decoded, err := url.PathUnescape(result); err == nil {
 		result = decoded
