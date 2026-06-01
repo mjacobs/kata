@@ -200,10 +200,13 @@ func PeekSchemaVersion(ctx context.Context, path string) (int, error) {
 
 // SchemaVersion returns the integer stored in meta.schema_version. It errors
 // when the row is absent or unparseable (unlike currentVersion, which treats a
-// missing meta table as version 0 for the migration runner).
+// missing meta table as version 0 for the migration runner). The read routes
+// through readQ so jsonl.Export's snapshot-bound store sees this as the first
+// read on its tx, pinning the snapshot here rather than at the iterators that
+// follow.
 func (d *Store) SchemaVersion(ctx context.Context) (int, error) {
 	var v string
-	if err := d.QueryRowContext(ctx,
+	if err := d.readQ.QueryRowContext(ctx,
 		`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&v); err != nil {
 		return 0, fmt.Errorf("read schema_version: %w", err)
 	}
