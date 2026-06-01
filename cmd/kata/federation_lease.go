@@ -174,7 +174,8 @@ func parseWholeClaimTTL(s string) (int64, error) {
 }
 
 func runClaimAction(cmd *cobra.Command, rawRef, action string, ttl time.Duration, timed bool) error {
-	actor, _ := resolveActor(flags.As, nil)
+	ctx := cmd.Context()
+	actor, _ := resolveActor(ctx, flags.As, nil)
 	body := map[string]any{
 		"holder":      actor,
 		"client_kind": "cli",

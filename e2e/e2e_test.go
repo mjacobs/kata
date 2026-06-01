@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/testenv"
+	gitcmd "go.kenn.io/kit/git/cmd"
 )
 
 func TestSmoke_FullLifecycle(t *testing.T) {
@@ -175,9 +175,15 @@ func deleteWith(t *testing.T, client *http.Client, url string) {
 func initRepo(t *testing.T, origin string) string {
 	t.Helper()
 	dir := t.TempDir()
-	require.NoError(t, exec.Command("git", "-C", dir, "init", "--quiet").Run())                 //nolint:gosec // G204: test-controlled args
-	require.NoError(t, exec.Command("git", "-C", dir, "remote", "add", "origin", origin).Run()) //nolint:gosec // G204: test-controlled origin
+	runGit(t, dir, "init", "--quiet")
+	runGit(t, dir, "remote", "add", "origin", origin)
 	return dir
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	stdout, stderr, err := gitcmd.New().Run(t.Context(), dir, nil, args...)
+	require.NoErrorf(t, err, "git %v: %s%s", args, stdout, stderr)
 }
 
 // postJSON sends a request through the bounded testenv client so a hung

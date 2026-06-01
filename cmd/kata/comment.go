@@ -43,7 +43,7 @@ func newCommentCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		actor, _ := resolveActor(flags.As, nil)
+		actor, _ := resolveActor(ctx, flags.As, nil)
 		client, err := httpClientFor(ctx, baseURL)
 		if err != nil {
 			return err

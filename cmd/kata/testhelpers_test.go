@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -23,6 +22,7 @@ import (
 	"go.kenn.io/kata/internal/db"
 	"go.kenn.io/kata/internal/testenv"
 	"go.kenn.io/kata/internal/version"
+	gitcmd "go.kenn.io/kit/git/cmd"
 )
 
 // setupKataEnv points KATA_HOME and KATA_DB at a fresh temp dir so the test
@@ -123,10 +123,8 @@ func contextWithBaseURL(ctx context.Context, url string) context.Context {
 // test setup that needs to initialize a workspace, configure remotes, etc.
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...) //nolint:gosec // git binary is trusted; args are test-controlled
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	require.NoErrorf(t, err, "git %v: %s", args, out)
+	stdout, stderr, err := gitcmd.New().Run(t.Context(), dir, nil, args...)
+	require.NoErrorf(t, err, "git %v: %s%s", args, stdout, stderr)
 }
 
 // postJSON marshals reqBody, POSTs to url, asserts a 200 response, and decodes

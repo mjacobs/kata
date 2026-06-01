@@ -13,7 +13,8 @@ func newWhoamiCmd() *cobra.Command {
 		Short: "show resolved actor and source",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			actor, source := resolveActor(flags.As, nil)
+			ctx := cmd.Context()
+			actor, source := resolveActor(ctx, flags.As, nil)
 			mode := currentOutputMode()
 			if mode == outputAgent {
 				_, err := fmt.Fprintf(cmd.OutOrStdout(), "OK whoami actor=%s source=%s\n",

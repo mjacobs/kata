@@ -5,12 +5,12 @@ package testfix
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	gitcmd "go.kenn.io/kit/git/cmd"
 )
 
 // WriteKataToml writes a minimal v1 .kata.toml under dir with the given name.
@@ -45,9 +45,6 @@ func InitGitRepo(t *testing.T) string {
 // test, surfacing combined output, if the command errors.
 func RunGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	//nolint:gosec // git binary is fixed; args are test-supplied subcommand flags.
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	require.NoErrorf(t, err, "git %v: %s", args, out)
+	stdout, stderr, err := gitcmd.New().Run(t.Context(), dir, nil, args...)
+	require.NoErrorf(t, err, "git %v: %s%s", args, stdout, stderr)
 }

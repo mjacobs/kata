@@ -96,7 +96,7 @@ func newCreateCmd() *cobra.Command {
 			}
 			return &cliError{Message: err.Error(), Kind: kindForExit(code), ExitCode: code}
 		}
-		actor, _ := resolveActor(flags.As, nil)
+		actor, _ := resolveActor(ctx, flags.As, nil)
 		client, err := httpClientFor(ctx, baseURL)
 		if err != nil {
 			return err

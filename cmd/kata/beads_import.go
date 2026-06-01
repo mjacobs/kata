@@ -128,7 +128,7 @@ func runBeadsImport(cmd *cobra.Command) error {
 		}
 	}
 
-	actor, _ := resolveActor(flags.As, nil)
+	actor, _ := resolveActor(ctx, flags.As, nil)
 	req, err := collectBeadsImportRequest(ctx, workspace, actor)
 	if err != nil {
 		return err

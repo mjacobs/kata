@@ -162,7 +162,7 @@ func newEditCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			actor, _ := resolveActor(flags.As, nil)
+			actor, _ := resolveActor(ctx, flags.As, nil)
 			if err := postFollowupComment(ctx, client, baseURL, pid, issue.RefForAPI, actor, comment); err != nil {
 				return err
 			}
@@ -182,7 +182,7 @@ func newEditCmd() *cobra.Command {
 				ExitCode: ExitValidation,
 			}
 		}
-		actor, _ := resolveActor(flags.As, nil)
+		actor, _ := resolveActor(ctx, flags.As, nil)
 		payload["actor"] = actor
 		client, err := httpClientFor(ctx, baseURL)
 		if err != nil {

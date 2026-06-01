@@ -614,7 +614,7 @@ func projectsRemoveCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			actor, _ := resolveActor(flags.As, nil)
+			actor, _ := resolveActor(ctx, flags.As, nil)
 			path := fmt.Sprintf("%s/api/v1/projects/%d?actor=%s",
 				baseURL, project.ID, url.QueryEscape(actor))
 			if force {
@@ -670,7 +670,7 @@ func projectsRestoreCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			actor, _ := resolveActor(flags.As, nil)
+			actor, _ := resolveActor(ctx, flags.As, nil)
 			path := fmt.Sprintf("%s/api/v1/projects/%d/restore?actor=%s",
 				baseURL, project.ID, url.QueryEscape(actor))
 			status, bs, err := httpDoJSON(ctx, client, http.MethodPost, path, nil)
@@ -752,7 +752,7 @@ func projectsDetachCmd() *cobra.Command {
 					ExitCode: ExitNotFound,
 				}
 			}
-			actor, _ := resolveActor(flags.As, nil)
+			actor, _ := resolveActor(ctx, flags.As, nil)
 			path := fmt.Sprintf("%s/api/v1/projects/%d/aliases/%d?actor=%s",
 				baseURL, projectID, aliasID, url.QueryEscape(actor))
 			if force {

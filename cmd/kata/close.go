@@ -215,7 +215,7 @@ func runAction(cmd *cobra.Command, raw, action string, extra map[string]any) err
 	if err != nil {
 		return err
 	}
-	actor, _ := resolveActor(flags.As, nil)
+	actor, _ := resolveActor(ctx, flags.As, nil)
 	body := map[string]any{"actor": actor}
 	for k, v := range extra {
 		body[k] = v

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -101,35 +102,35 @@ func TestResolveActor_Precedence(t *testing.T) {
 	t.Run("flag wins", func(t *testing.T) {
 		t.Setenv("KATA_AUTHOR", "env-shouldnt-win")
 		t.Setenv("USER", "user-shouldnt-win")
-		got, src := resolveActor("flag-actor", func() (string, error) { return "git-shouldnt-win", nil })
+		got, src := resolveActor(t.Context(), "flag-actor", func(context.Context) (string, error) { return "git-shouldnt-win", nil })
 		assert.Equal(t, "flag-actor", got)
 		assert.Equal(t, "flag", src)
 	})
 	t.Run("env wins when no flag", func(t *testing.T) {
 		t.Setenv("KATA_AUTHOR", "env-actor")
 		t.Setenv("USER", "user-shouldnt-win")
-		got, src := resolveActor("", func() (string, error) { return "git-shouldnt-win", nil })
+		got, src := resolveActor(t.Context(), "", func(context.Context) (string, error) { return "git-shouldnt-win", nil })
 		assert.Equal(t, "env-actor", got)
 		assert.Equal(t, "env", src)
 	})
 	t.Run("user wins when no flag or KATA_AUTHOR", func(t *testing.T) {
 		t.Setenv("KATA_AUTHOR", "")
 		t.Setenv("USER", "loginname")
-		got, src := resolveActor("", func() (string, error) { return "git-shouldnt-win", nil })
+		got, src := resolveActor(t.Context(), "", func(context.Context) (string, error) { return "git-shouldnt-win", nil })
 		assert.Equal(t, "loginname", got)
 		assert.Equal(t, "user", src)
 	})
 	t.Run("git wins when no flag, no env, no $USER", func(t *testing.T) {
 		t.Setenv("KATA_AUTHOR", "")
 		t.Setenv("USER", "")
-		got, src := resolveActor("", func() (string, error) { return "git-user", nil })
+		got, src := resolveActor(t.Context(), "", func(context.Context) (string, error) { return "git-user", nil })
 		assert.Equal(t, "git-user", got)
 		assert.Equal(t, "git", src)
 	})
 	t.Run("fallback when nothing else", func(t *testing.T) {
 		t.Setenv("KATA_AUTHOR", "")
 		t.Setenv("USER", "")
-		got, src := resolveActor("", func() (string, error) { return "", nil })
+		got, src := resolveActor(t.Context(), "", func(context.Context) (string, error) { return "", nil })
 		assert.Equal(t, "anonymous", got)
 		assert.Equal(t, "fallback", src)
 	})
