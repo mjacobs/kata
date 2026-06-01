@@ -1,14 +1,16 @@
 package sqlitestore
 
 import (
-	"go.kenn.io/kata/internal/db"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"go.kenn.io/kata/internal/db"
 )
+
 type preparedFederationIngestEvent struct {
 	SourceEventID int64
 	Event         db.RemoteEvent

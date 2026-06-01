@@ -1,7 +1,6 @@
 package sqlitestore
 
 import (
-	"go.kenn.io/kata/internal/db"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,9 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"go.kenn.io/kata/internal/db"
+
 	katauid "go.kenn.io/kata/internal/uid"
 )
-
 
 const (
 	minTimedClaimTTL = time.Minute
@@ -293,7 +293,7 @@ func (d *Store) ForceReleaseClaim(ctx context.Context, p db.ForceReleaseClaimPar
 	return out, err
 }
 
-// db.ClaimStatus returns the live claim after expiring stale timed claims.
+// ClaimStatus returns the live claim after expiring stale timed claims.
 func (d *Store) ClaimStatus(ctx context.Context, projectID int64, issueRef string, now time.Time) (db.ClaimStatus, error) {
 	now = claimNow(now)
 	out := db.ClaimStatus{HubNow: now}
@@ -575,7 +575,7 @@ func (d *Store) MarkPendingClaimAttempt(ctx context.Context, requestUID, lastErr
 	})
 }
 
-// db.ClaimStatusRefreshError returns the latest throttling marker for show refresh.
+// ClaimStatusRefreshError returns the latest throttling marker for show refresh.
 func (d *Store) ClaimStatusRefreshError(
 	ctx context.Context,
 	projectID int64,

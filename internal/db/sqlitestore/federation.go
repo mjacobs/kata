@@ -1576,6 +1576,9 @@ func optionalStringValue(s *string) any {
 	}
 	return *s
 }
+
+// AdoptProjectIntoFederation adopts an existing local project into a hub federation,
+// rewriting its UID, emitting a synthetic baseline snapshot, and clearing claim state.
 func (d *Store) AdoptProjectIntoFederation(
 	ctx context.Context,
 	p db.AdoptProjectIntoFederationParams,
