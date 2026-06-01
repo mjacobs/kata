@@ -571,7 +571,7 @@ func resolveByAliasIfAvailable(ctx context.Context, store *db.DB, disc config.Di
 	if disc.GitRoot == "" && disc.WorkspaceRoot == "" {
 		return nil, false, nil
 	}
-	info, err := config.ComputeAliasIdentity(disc)
+	info, err := config.ComputeAliasIdentity(ctx, disc)
 	if err != nil {
 		return nil, false, api.NewError(400, "validation", err.Error(), "", nil)
 	}
@@ -602,7 +602,7 @@ func resolveByAliasIfAvailable(ctx context.Context, store *db.DB, disc config.Di
 // resolveByAlias looks up the alias derived from the git root and returns
 // the bound project. Caller guarantees disc.GitRoot != "".
 func resolveByAlias(ctx context.Context, store *db.DB, disc config.DiscoveredPaths) (*api.ProjectResolveBody, error) {
-	info, err := config.ComputeAliasIdentity(disc)
+	info, err := config.ComputeAliasIdentity(ctx, disc)
 	if err != nil {
 		return nil, api.NewError(400, "validation", err.Error(), "", nil)
 	}
@@ -656,7 +656,7 @@ func initProject(ctx context.Context, store *db.DB, req *api.InitProjectRequest)
 		return nil, false, err
 	}
 
-	name, err := pickInitName(req, disc, tomlCfg)
+	name, err := pickInitName(ctx, req, disc, tomlCfg)
 	if err != nil {
 		return nil, false, err
 	}
@@ -668,7 +668,7 @@ func initProject(ctx context.Context, store *db.DB, req *api.InitProjectRequest)
 		disc.WorkspaceRoot = abs
 	}
 
-	aliasInfo, err := config.ComputeAliasIdentity(disc)
+	aliasInfo, err := config.ComputeAliasIdentity(ctx, disc)
 	if err != nil {
 		return nil, false, api.NewError(400, "validation", err.Error(), "", nil)
 	}
@@ -797,8 +797,8 @@ func readWorkspaceConfig(disc config.DiscoveredPaths) (*config.ProjectConfig, er
 	return cfgFile, nil
 }
 
-func pickInitName(req *api.InitProjectRequest, disc config.DiscoveredPaths, tomlCfg *config.ProjectConfig) (string, error) {
-	choice, err := config.PickInitName(disc, tomlCfg, req.Body.Name, req.Body.Replace)
+func pickInitName(ctx context.Context, req *api.InitProjectRequest, disc config.DiscoveredPaths, tomlCfg *config.ProjectConfig) (string, error) {
+	choice, err := config.PickInitName(ctx, disc, tomlCfg, req.Body.Name, req.Body.Replace)
 	switch {
 	case errors.Is(err, config.ErrNameConflict):
 		return "", api.NewError(http.StatusConflict, "project_binding_conflict",
@@ -839,7 +839,7 @@ func upsertProject(ctx context.Context, store *db.DB, name string) (db.Project, 
 // upsertAliasFor is the disc-flavored entry point used during resolve, where
 // no preflight has happened. It computes the alias identity then delegates.
 func upsertAliasFor(ctx context.Context, store *db.DB, projectID int64, disc config.DiscoveredPaths, reassign bool) (db.ProjectAlias, error) {
-	info, err := config.ComputeAliasIdentity(disc)
+	info, err := config.ComputeAliasIdentity(ctx, disc)
 	if err != nil {
 		return db.ProjectAlias{}, api.NewError(400, "validation", err.Error(), "", nil)
 	}

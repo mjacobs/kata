@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,17 +89,28 @@ func TestComputeAliasIdentity_GitWithRemote(t *testing.T) {
 	dir := testfix.InitGitRepo(t)
 	testfix.RunGit(t, dir, "remote", "add", "origin", "https://github.com/wesm/kata.git")
 
-	a, err := config.ComputeAliasIdentity(config.DiscoveredPaths{GitRoot: dir})
+	a, err := config.ComputeAliasIdentity(t.Context(), config.DiscoveredPaths{GitRoot: dir})
 	require.NoError(t, err)
 	assert.Equal(t, "github.com/wesm/kata", a.Identity)
 	assert.Equal(t, "git", a.Kind)
 	assert.Equal(t, dir, a.RootPath)
 }
 
+func TestComputeAliasIdentity_RespectsCanceledContext(t *testing.T) {
+	dir := testfix.InitGitRepo(t)
+	testfix.RunGit(t, dir, "remote", "add", "origin", "https://github.com/wesm/kata.git")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := config.ComputeAliasIdentity(ctx, config.DiscoveredPaths{GitRoot: dir})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
 func TestComputeAliasIdentity_GitNoRemote(t *testing.T) {
 	dir := testfix.InitGitRepo(t)
 
-	a, err := config.ComputeAliasIdentity(config.DiscoveredPaths{GitRoot: dir})
+	a, err := config.ComputeAliasIdentity(t.Context(), config.DiscoveredPaths{GitRoot: dir})
 	require.NoError(t, err)
 	assert.Equal(t, "local://"+dir, a.Identity)
 	assert.Equal(t, "local", a.Kind)
@@ -106,7 +118,7 @@ func TestComputeAliasIdentity_GitNoRemote(t *testing.T) {
 
 func TestComputeAliasIdentity_NonGitWorkspace(t *testing.T) {
 	ws := t.TempDir()
-	a, err := config.ComputeAliasIdentity(config.DiscoveredPaths{WorkspaceRoot: ws})
+	a, err := config.ComputeAliasIdentity(t.Context(), config.DiscoveredPaths{WorkspaceRoot: ws})
 	require.NoError(t, err)
 	assert.Equal(t, "local://"+ws, a.Identity)
 	assert.Equal(t, "local", a.Kind)
@@ -114,7 +126,7 @@ func TestComputeAliasIdentity_NonGitWorkspace(t *testing.T) {
 }
 
 func TestComputeAliasIdentity_Neither(t *testing.T) {
-	_, err := config.ComputeAliasIdentity(config.DiscoveredPaths{})
+	_, err := config.ComputeAliasIdentity(t.Context(), config.DiscoveredPaths{})
 	require.Error(t, err)
 }
 
@@ -147,7 +159,7 @@ func TestPickInitName_KataTomlOnly(t *testing.T) {
 	cfg := &config.ProjectConfig{}
 	cfg.Project.Name = "kata"
 
-	got, err := config.PickInitName(config.DiscoveredPaths{}, cfg, "", false)
+	got, err := config.PickInitName(t.Context(), config.DiscoveredPaths{}, cfg, "", false)
 	require.NoError(t, err)
 	assert.Equal(t, "kata", got.Name)
 }
@@ -156,7 +168,7 @@ func TestPickInitName_KataTomlMatchingInputName(t *testing.T) {
 	cfg := &config.ProjectConfig{}
 	cfg.Project.Name = "kata"
 
-	got, err := config.PickInitName(config.DiscoveredPaths{}, cfg, "kata", false)
+	got, err := config.PickInitName(t.Context(), config.DiscoveredPaths{}, cfg, "kata", false)
 	require.NoError(t, err)
 	assert.Equal(t, "kata", got.Name)
 }
@@ -165,7 +177,7 @@ func TestPickInitName_KataTomlConflictWithoutReplace(t *testing.T) {
 	cfg := &config.ProjectConfig{}
 	cfg.Project.Name = "kata"
 
-	_, err := config.PickInitName(config.DiscoveredPaths{}, cfg, "other", false)
+	_, err := config.PickInitName(t.Context(), config.DiscoveredPaths{}, cfg, "other", false)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrNameConflict)
 }
@@ -174,13 +186,13 @@ func TestPickInitName_KataTomlConflictWithReplace(t *testing.T) {
 	cfg := &config.ProjectConfig{}
 	cfg.Project.Name = "kata"
 
-	got, err := config.PickInitName(config.DiscoveredPaths{}, cfg, "other", true)
+	got, err := config.PickInitName(t.Context(), config.DiscoveredPaths{}, cfg, "other", true)
 	require.NoError(t, err)
 	assert.Equal(t, "other", got.Name)
 }
 
 func TestPickInitName_InputName(t *testing.T) {
-	got, err := config.PickInitName(config.DiscoveredPaths{}, nil, "custom", false)
+	got, err := config.PickInitName(t.Context(), config.DiscoveredPaths{}, nil, "custom", false)
 	require.NoError(t, err)
 	assert.Equal(t, "custom", got.Name)
 }
@@ -189,7 +201,7 @@ func TestPickInitName_FromGitRoot(t *testing.T) {
 	dir := testfix.InitGitRepo(t)
 	testfix.RunGit(t, dir, "remote", "add", "origin", "https://github.com/wesm/kata.git")
 
-	got, err := config.PickInitName(config.DiscoveredPaths{GitRoot: dir}, nil, "", false)
+	got, err := config.PickInitName(t.Context(), config.DiscoveredPaths{GitRoot: dir}, nil, "", false)
 	require.NoError(t, err)
 	assert.Equal(t, "kata", got.Name)
 }
@@ -197,13 +209,13 @@ func TestPickInitName_FromGitRoot(t *testing.T) {
 func TestPickInitName_FromLocalWorkspace(t *testing.T) {
 	dir := t.TempDir()
 
-	got, err := config.PickInitName(config.DiscoveredPaths{WorkspaceRoot: dir}, nil, "", false)
+	got, err := config.PickInitName(t.Context(), config.DiscoveredPaths{WorkspaceRoot: dir}, nil, "", false)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Base(dir), got.Name)
 }
 
 func TestPickInitName_NoSource(t *testing.T) {
-	_, err := config.PickInitName(config.DiscoveredPaths{}, nil, "", false)
+	_, err := config.PickInitName(t.Context(), config.DiscoveredPaths{}, nil, "", false)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrNoNameSource)
 }
@@ -214,7 +226,7 @@ func TestPickInitName_KataTomlEmptyNameFallsBackToSource(t *testing.T) {
 	dir := testfix.InitGitRepo(t)
 	testfix.RunGit(t, dir, "remote", "add", "origin", "https://github.com/wesm/kata.git")
 
-	got, err := config.PickInitName(config.DiscoveredPaths{GitRoot: dir}, cfg, "", false)
+	got, err := config.PickInitName(t.Context(), config.DiscoveredPaths{GitRoot: dir}, cfg, "", false)
 	require.NoError(t, err)
 	assert.Equal(t, "kata", got.Name)
 }
