@@ -182,6 +182,9 @@ func toImportRecord(env Envelope, exportVersion int, localInstanceUID string, pr
 		if err := decodeData(env, &rec); err != nil {
 			return db.ImportRecord{}, err
 		}
+		if err := normalizeIssueTimes(&rec.IssueExport); err != nil {
+			return db.ImportRecord{}, err
+		}
 		if err := fillIssueUID(&rec, exportVersion); err != nil {
 			return db.ImportRecord{}, err
 		}
@@ -190,6 +193,9 @@ func toImportRecord(env Envelope, exportVersion int, localInstanceUID string, pr
 	case KindComment:
 		var rec db.CommentExport
 		if err := decodeData(env, &rec); err != nil {
+			return db.ImportRecord{}, err
+		}
+		if err := normalizeCommentTimes(&rec); err != nil {
 			return db.ImportRecord{}, err
 		}
 		if err := fillCommentUID(&rec); err != nil {
@@ -257,6 +263,15 @@ func toImportRecord(env Envelope, exportVersion int, localInstanceUID string, pr
 		}
 		if rec.ProjectName == "" && rec.LegacyProjectName != "" {
 			rec.ProjectName = rec.LegacyProjectName
+		}
+		// Normalize the wire timestamp BEFORE content-hash computation so a
+		// Go-stringified timestamp at any export version flows through the
+		// same RFC3339-millis form the hash was originally computed against.
+		// At the current schema, this means a pre-normalized supplied hash
+		// will mismatch the recomputed one and be rejected with a
+		// content_hash error.
+		if err := normalizeEventTimes(&rec.EventExport); err != nil {
+			return db.ImportRecord{}, err
 		}
 		if err := fillEventV3Identity(&rec.EventExport, exportVersion, localInstanceUID); err != nil {
 			return db.ImportRecord{}, err
@@ -412,6 +427,36 @@ func fillEventV11ReplayFields(rec *db.EventExport, exportVersion int, projectUID
 		if !validContentHash(rec.ContentHash) {
 			return fmt.Errorf("event %d invalid content_hash %q", rec.ID, rec.ContentHash)
 		}
+		// Re-verify content_hash against the (post-normalized) record. A
+		// supplied hash that was computed against a pre-normalized
+		// timestamp (Go's stringified time.Time) won't match the
+		// canonical RFC3339-millis form normalizeEventTimes rewrote into
+		// the record, so the mismatch surfaces here as a refusal rather
+		// than letting subtly-divergent rows land in the events table.
+		projectUID, ok := projectUIDByID[rec.ProjectID]
+		if !ok {
+			return fmt.Errorf("verify event content_hash: project %d not found in import stream", rec.ProjectID)
+		}
+		recomputed, err := db.EventContentHash(db.EventHashInput{
+			UID:               rec.UID,
+			OriginInstanceUID: rec.OriginInstanceUID,
+			ProjectUID:        projectUID,
+			ProjectName:       rec.ProjectName,
+			IssueUID:          rec.IssueUID,
+			RelatedIssueUID:   rec.RelatedIssueUID,
+			Type:              rec.Type,
+			Actor:             rec.Actor,
+			HLCPhysicalMS:     rec.HLCPhysicalMS,
+			HLCCounter:        rec.HLCCounter,
+			CreatedAt:         rec.CreatedAt,
+			Payload:           rec.Payload,
+		})
+		if err != nil {
+			return fmt.Errorf("verify event content_hash: %w", err)
+		}
+		if recomputed != rec.ContentHash {
+			return fmt.Errorf("event %d content_hash mismatch (supplied %s, recomputed %s)", rec.ID, rec.ContentHash, recomputed)
+		}
 		return nil
 	}
 	t, err := parseExportTime(rec.CreatedAt)
@@ -509,4 +554,63 @@ func parseExportTime(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("parse timestamp %q", s)
+}
+
+// rfc3339MilliLayout is the canonical wire format for kata timestamps: RFC3339
+// with millisecond precision and a literal "Z" zone.
+const rfc3339MilliLayout = "2006-01-02T15:04:05.000Z"
+
+// normalizeImportTime rewrites *field to the canonical RFC3339-millis form in
+// place. Pre-v8 exports may carry timestamps in Go's default time.Time
+// stringification (e.g. "2026-05-04 00:21:07 +0000 UTC"); since these strings
+// also flow through to event content_hash inputs, the in-place rewrite must
+// happen before any record-derived hash is computed. Empty strings are left
+// alone.
+func normalizeImportTime(field string, p *string) error {
+	if p == nil || *p == "" {
+		return nil
+	}
+	t, err := parseExportTime(*p)
+	if err != nil {
+		return fmt.Errorf("normalize %s: %w", field, err)
+	}
+	*p = t.UTC().Format(rfc3339MilliLayout)
+	return nil
+}
+
+// normalizeOptionalImportTime is the *string variant used for nullable fields
+// like closed_at/deleted_at; a nil pointer or zero value is left untouched.
+func normalizeOptionalImportTime(field string, p *string) error {
+	if p == nil || *p == "" {
+		return nil
+	}
+	return normalizeImportTime(field, p)
+}
+
+func normalizeIssueTimes(rec *db.IssueExport) error {
+	if err := normalizeImportTime("issue.created_at", &rec.CreatedAt); err != nil {
+		return err
+	}
+	if err := normalizeImportTime("issue.updated_at", &rec.UpdatedAt); err != nil {
+		return err
+	}
+	if rec.ClosedAt != nil {
+		if err := normalizeOptionalImportTime("issue.closed_at", rec.ClosedAt); err != nil {
+			return err
+		}
+	}
+	if rec.DeletedAt != nil {
+		if err := normalizeOptionalImportTime("issue.deleted_at", rec.DeletedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func normalizeCommentTimes(rec *db.CommentExport) error {
+	return normalizeImportTime("comment.created_at", &rec.CreatedAt)
+}
+
+func normalizeEventTimes(rec *db.EventExport) error {
+	return normalizeImportTime("event.created_at", &rec.CreatedAt)
 }

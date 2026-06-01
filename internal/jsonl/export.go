@@ -17,11 +17,27 @@ type ExportOptions struct {
 	IncludeDeleted bool
 }
 
+// exportSnapshotter is implemented by stores (today: *sqlitestore.Store) that
+// can pin all iterator reads to a single read-only transaction. When present,
+// Export uses it so a concurrent writer that commits mid-export does not bleed
+// rows into the output.
+type exportSnapshotter interface {
+	BeginExportSnapshot(ctx context.Context) (db.Storage, func() error, error)
+}
+
 // Export writes a deterministic JSONL export of store to w. It is backend-
 // neutral: it routes every read through db.Storage iterator methods and holds
 // no raw SQL. The legacy pre-v10 projections live in exportForCutover and are
 // reachable only via cutover.go.
 func Export(ctx context.Context, store db.Storage, w io.Writer, opts ExportOptions) error {
+	if snap, ok := store.(exportSnapshotter); ok {
+		snapshot, release, err := snap.BeginExportSnapshot(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = release() }()
+		store = snapshot
+	}
 	enc := NewEncoder(w)
 	f := db.ExportFilter{IncludeDeleted: opts.IncludeDeleted}
 	if opts.ProjectID > 0 {

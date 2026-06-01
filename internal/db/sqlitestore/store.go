@@ -29,11 +29,24 @@ var migrationsFS embed.FS
 var migrationsSource fs.FS = migrationsFS
 
 // Store wraps *sql.DB. Use Open to construct one with PRAGMAs applied.
+//
+// readQ is the queryable used by streaming read iterators (Export*). It
+// defaults to the embedded *sql.DB. BeginExportSnapshot returns a *Store
+// copy with readQ swapped for a read-only *sql.Tx so an Export ranges a
+// consistent snapshot even if other writers commit mid-export.
 type Store struct {
 	*sql.DB
 	path        string
 	instanceUID string
 	readOnly    bool
+	readQ       readQuerier
+}
+
+// readQuerier is the read-only query surface shared between *sql.DB and *sql.Tx.
+// Streaming iterators use this so a snapshot-bound tx can be swapped in.
+type readQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // Compile-time check that *Store satisfies the neutral db.Storage contract.
@@ -71,11 +84,31 @@ func Open(ctx context.Context, path string, opts ...db.OpenOption) (*Store, erro
 		return nil, fmt.Errorf("ping %s: %w", path, err)
 	}
 	d := &Store{DB: sdb, path: path}
+	d.readQ = sdb
 	if err := d.cacheInstanceUIDIfPresent(ctx); err != nil {
 		_ = sdb.Close()
 		return nil, err
 	}
 	return d, nil
+}
+
+// BeginExportSnapshot returns a snapshot Storage whose Export* iterators all
+// read through a single read-only transaction. The returned release function
+// rolls the snapshot back; callers must call it before discarding the
+// snapshot. Other (non-Export) methods on the returned store continue to use
+// the underlying *sql.DB pool, which is intentional — Export iterators are
+// the only readers that benefit from snapshot isolation today.
+//
+// The return type is db.Storage so this method satisfies the snapshotter
+// interface jsonl.Export type-asserts.
+func (d *Store) BeginExportSnapshot(ctx context.Context) (db.Storage, func() error, error) {
+	tx, err := d.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, nil, fmt.Errorf("begin export snapshot: %w", err)
+	}
+	snap := *d
+	snap.readQ = tx
+	return &snap, tx.Rollback, nil
 }
 
 // InstanceUID returns the local kata installation's stable identifier. The
@@ -140,7 +173,9 @@ func openReadOnly(ctx context.Context, path string) (*Store, error) {
 		_ = sdb.Close()
 		return nil, fmt.Errorf("ping read-only %s: %w", path, err)
 	}
-	return &Store{DB: sdb, path: path, readOnly: true}, nil
+	s := &Store{DB: sdb, path: path, readOnly: true}
+	s.readQ = sdb
+	return s, nil
 }
 
 // Path returns the resolved database path.

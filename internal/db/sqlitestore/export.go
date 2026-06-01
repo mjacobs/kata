@@ -12,7 +12,7 @@ import (
 // ExportMeta streams every meta row ordered by key.
 func (d *Store) ExportMeta(ctx context.Context) iter.Seq2[db.MetaKV, error] {
 	return func(yield func(db.MetaKV, error) bool) {
-		rows, err := d.QueryContext(ctx, `SELECT key, value FROM meta ORDER BY key ASC`)
+		rows, err := d.readQ.QueryContext(ctx, `SELECT key, value FROM meta ORDER BY key ASC`)
 		if err != nil {
 			yield(db.MetaKV{}, fmt.Errorf("export meta: %w", err))
 			return
@@ -87,7 +87,7 @@ func (d *Store) ExportIssues(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 		          FROM issues i
 		          LEFT JOIN recurrences r ON r.id = i.recurrence_id`
 		query += exportWhere("i", f) + ` ORDER BY i.id ASC`
-		rows, err := d.QueryContext(ctx, query, exportArgs(f)...)
+		rows, err := d.readQ.QueryContext(ctx, query, exportArgs(f)...)
 		if err != nil {
 			yield(db.IssueExport{}, fmt.Errorf("export issues: %w", err))
 			return
@@ -151,7 +151,7 @@ func (d *Store) ExportRecurrences(ctx context.Context, f db.ExportFilter) iter.S
 		}
 		query += " ORDER BY id ASC"
 
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.RecurrenceExport{}, fmt.Errorf("export recurrences: %w", err))
 			return
@@ -217,7 +217,7 @@ func (d *Store) ExportLinks(ctx context.Context, f db.ExportFilter) iter.Seq2[db
 		}
 		query += ` ORDER BY links.id ASC`
 
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.LinkExport{}, fmt.Errorf("export links: %w", err))
 			return
@@ -253,7 +253,7 @@ func (d *Store) ExportProjectAliases(ctx context.Context, f db.ExportFilter) ite
 			args = append(args, *f.ProjectID)
 		}
 		query += ` ORDER BY id ASC`
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.AliasExport{}, fmt.Errorf("export project_aliases: %w", err))
 			return
@@ -284,7 +284,7 @@ func (d *Store) ExportComments(ctx context.Context, f db.ExportFilter) iter.Seq2
 		          FROM comments
 		          JOIN issues ON issues.id = comments.issue_id`
 		query += exportWhere("issues", f) + ` ORDER BY comments.id ASC`
-		rows, err := d.QueryContext(ctx, query, exportArgs(f)...)
+		rows, err := d.readQ.QueryContext(ctx, query, exportArgs(f)...)
 		if err != nil {
 			yield(db.CommentExport{}, fmt.Errorf("export comments: %w", err))
 			return
@@ -314,7 +314,7 @@ func (d *Store) ExportIssueLabels(ctx context.Context, f db.ExportFilter) iter.S
 		          FROM issue_labels
 		          JOIN issues ON issues.id = issue_labels.issue_id`
 		query += exportWhere("issues", f) + ` ORDER BY issue_labels.issue_id ASC, issue_labels.label ASC`
-		rows, err := d.QueryContext(ctx, query, exportArgs(f)...)
+		rows, err := d.readQ.QueryContext(ctx, query, exportArgs(f)...)
 		if err != nil {
 			yield(db.IssueLabelExport{}, fmt.Errorf("export issue_labels: %w", err))
 			return
@@ -371,7 +371,7 @@ func (d *Store) ExportImportMappings(ctx context.Context, f db.ExportFilter) ite
 			}
 		}
 		query += ` ORDER BY id ASC`
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.ImportMappingExport{}, fmt.Errorf("export import_mappings: %w", err))
 			return
@@ -410,7 +410,7 @@ func (d *Store) ExportFederationBindings(ctx context.Context, f db.ExportFilter)
 			args = append(args, *f.ProjectID)
 		}
 		query += ` ORDER BY project_id ASC`
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.FederationBindingExport{}, fmt.Errorf("export federation_bindings: %w", err))
 			return
@@ -452,7 +452,7 @@ func (d *Store) ExportFederationSyncStatus(ctx context.Context, f db.ExportFilte
 			args = append(args, *f.ProjectID)
 		}
 		query += ` ORDER BY project_id ASC`
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.FederationSyncStatusExport{}, fmt.Errorf("export federation_sync_status: %w", err))
 			return
@@ -489,7 +489,7 @@ func (d *Store) ExportFederationQuarantine(ctx context.Context, f db.ExportFilte
 			args = append(args, *f.ProjectID)
 		}
 		query += ` ORDER BY id ASC`
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.FederationQuarantineExport{}, fmt.Errorf("export federation_quarantine: %w", err))
 			return
@@ -531,7 +531,7 @@ func (d *Store) ExportFederationEnrollments(ctx context.Context, f db.ExportFilt
 			args = append(args, *f.ProjectID)
 		}
 		query += ` ORDER BY id ASC`
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.FederationEnrollmentExport{}, fmt.Errorf("export federation_enrollments: %w", err))
 			return
@@ -570,7 +570,7 @@ func (d *Store) ExportIssueClaims(ctx context.Context, f db.ExportFilter) iter.S
 		          FROM issue_claims
 		          JOIN issues ON issues.id = issue_claims.issue_id`
 		query += exportWhere("issues", f) + ` ORDER BY issue_claims.id ASC`
-		rows, err := d.QueryContext(ctx, query, exportArgs(f)...)
+		rows, err := d.readQ.QueryContext(ctx, query, exportArgs(f)...)
 		if err != nil {
 			yield(db.IssueClaimExport{}, fmt.Errorf("export issue_claims: %w", err))
 			return
@@ -613,7 +613,7 @@ func (d *Store) ExportPendingClaimRequests(ctx context.Context, f db.ExportFilte
 		          FROM pending_claim_requests
 		          JOIN issues ON issues.id = pending_claim_requests.issue_id`
 		query += exportWhere("issues", f) + ` ORDER BY pending_claim_requests.id ASC`
-		rows, err := d.QueryContext(ctx, query, exportArgs(f)...)
+		rows, err := d.readQ.QueryContext(ctx, query, exportArgs(f)...)
 		if err != nil {
 			yield(db.PendingClaimRequestExport{}, fmt.Errorf("export pending_claim_requests: %w", err))
 			return
@@ -641,7 +641,7 @@ func (d *Store) ExportPendingClaimRequests(ctx context.Context, f db.ExportFilte
 // ExportSequences streams sqlite_sequence rows ordered by name. SQLite-only.
 func (d *Store) ExportSequences(ctx context.Context) iter.Seq2[db.SequenceExport, error] {
 	return func(yield func(db.SequenceExport, error) bool) {
-		rows, err := d.QueryContext(ctx, `SELECT name, seq FROM sqlite_sequence ORDER BY name ASC`)
+		rows, err := d.readQ.QueryContext(ctx, `SELECT name, seq FROM sqlite_sequence ORDER BY name ASC`)
 		if err != nil {
 			yield(db.SequenceExport{}, fmt.Errorf("export sqlite_sequence: %w", err))
 			return
@@ -680,7 +680,7 @@ func (d *Store) ExportPurgeLog(ctx context.Context, f db.ExportFilter) iter.Seq2
 		}
 		query += ` ORDER BY purge_log.id ASC`
 
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.PurgeLogExport{}, fmt.Errorf("export purge_log: %w", err))
 			return
@@ -762,7 +762,7 @@ func (d *Store) ExportEvents(ctx context.Context, f db.ExportFilter) iter.Seq2[d
 		}
 		query += ` ORDER BY events.id ASC`
 
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.EventExport{}, fmt.Errorf("export events: %w", err))
 			return
@@ -823,7 +823,7 @@ func (d *Store) ExportProjects(ctx context.Context, f db.ExportFilter) iter.Seq2
 			args = append(args, *f.ProjectID)
 		}
 		query += ` ORDER BY id ASC`
-		rows, err := d.QueryContext(ctx, query, args...)
+		rows, err := d.readQ.QueryContext(ctx, query, args...)
 		if err != nil {
 			yield(db.ProjectExport{}, fmt.Errorf("export projects: %w", err))
 			return
