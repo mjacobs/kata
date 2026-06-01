@@ -28,10 +28,11 @@ func TestWriteFederationCredentialRoundTrips(t *testing.T) {
 
 	require.NoError(t, config.WriteFederationCredential("01HZNQ7VFPK1XGD8R5MABCD4EX",
 		config.FederationCredential{
-			HubURL:       "http://127.0.0.1:7373",
-			HubProjectID: 42,
-			Token:        "secret-token",
-			Capabilities: "pull,push,claim",
+			HubURL:        "http://127.0.0.1:7373",
+			HubProjectID:  42,
+			Token:         "secret-token",
+			Capabilities:  "pull,push,claim",
+			AllowInsecure: true,
 		}))
 
 	path := filepath.Join(home, "credentials.toml")
@@ -50,6 +51,7 @@ func TestWriteFederationCredentialRoundTrips(t *testing.T) {
 	assert.Equal(t, int64(42), got.HubProjectID)
 	assert.Equal(t, "secret-token", got.Token)
 	assert.Equal(t, "pull,push,claim", got.Capabilities)
+	assert.True(t, got.AllowInsecure)
 }
 
 func TestReadFederationCredentialWithoutCapabilitiesDefaultsEmpty(t *testing.T) {

@@ -91,6 +91,24 @@ be reachable and the token must include `pull`. The command creates a local
 replica project bound to the hub project UID and replay horizon, stores the hub
 URL/project/token locally, and enables push only when `--push` is present.
 
+When the hub is reached over plain HTTP through a private overlay hostname
+rather than a literal non-public IP address, opt in explicitly:
+
+```sh
+kata federation join --project fedlab \
+  --hub-url http://hub.internal:7787 \
+  --hub-project-id 1 \
+  --token ... \
+  --push \
+  --allow-insecure
+```
+
+`--allow-insecure` is stored with the local federation credential so later
+background pull, push, and lease requests can keep using that hub hostname.
+Origin pinning still applies, so enrollment tokens are not sent across
+cross-origin redirects. Use HTTPS instead when the hub is not on a trusted
+private network.
+
 Enrollment capabilities and local spoke behavior are separate:
 
 - `--capabilities pull,push,lease` on the hub says what the token may do;
@@ -189,6 +207,8 @@ kata federation enable --project <project>
 kata federation enroll --project <project> --spoke-instance <uid> --hub-url <url>
 kata federation join --project <project> --hub-url <url> --hub-project-id <id> \
   --token <token> [--push]
+kata federation join --project <project> --hub-url <http-hostname-url> \
+  --hub-project-id <id> --token <token> --allow-insecure [--push]
 kata federation join --project <existing-project> --hub-url <url> \
   --hub-project-id <id> --token <token> --push --adopt-existing
 kata federation enrollments list

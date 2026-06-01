@@ -211,6 +211,7 @@ type CreateFederationReplicaRequest struct {
 		BaselineThroughEventID int64  `json:"baseline_through_event_id,omitempty"`
 		Token                  string `json:"token,omitempty"`
 		Capabilities           string `json:"capabilities,omitempty"`
+		AllowInsecure          bool   `json:"allow_insecure,omitempty"`
 		PushEnabled            bool   `json:"push_enabled,omitempty"`
 		AdoptExisting          bool   `json:"adopt_existing,omitempty"`
 	}

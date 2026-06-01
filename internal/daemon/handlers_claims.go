@@ -359,7 +359,7 @@ func claimForwardClient(
 	if cred.HubProjectID == 0 {
 		cred.HubProjectID = binding.HubProjectID
 	}
-	client, err := newClaimHubClient(ctx, cred.HubURL, cred.Token)
+	client, err := newClaimHubClient(ctx, cred.HubURL, cred.Token, cred.AllowInsecure)
 	if err != nil {
 		return nil, config.FederationCredential{}, api.NewError(http.StatusServiceUnavailable, "federation_offline", err.Error(), "", nil)
 	}
@@ -481,7 +481,7 @@ func (e *claimHubStatusError) Error() string {
 
 var errClaimHubTransportUnavailable = errors.New("claim hub transport unavailable")
 
-func newClaimHubClient(ctx context.Context, baseURL, token string) (*claimHubClient, error) {
+func newClaimHubClient(ctx context.Context, baseURL, token string, allowInsecure bool) (*claimHubClient, error) {
 	httpClient, err := newClaimHubHTTPClient(ctx, baseURL)
 	if err != nil {
 		if errors.Is(err, errClaimHubTransportUnavailable) {
@@ -493,13 +493,26 @@ func newClaimHubClient(ctx context.Context, baseURL, token string) (*claimHubCli
 		}
 		return nil, err
 	}
-	if err := config.ConfigureBearerClient(httpClient, baseURL, token); err != nil {
+	if err := configureClaimHubBearerClient(httpClient, baseURL, token, allowInsecure); err != nil {
 		return nil, err
 	}
 	return &claimHubClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		client:  httpClient,
 	}, nil
+}
+
+func configureClaimHubBearerClient(c *http.Client, baseURL, token string, allowInsecure bool) error {
+	if !allowInsecure {
+		return config.ConfigureBearerClient(c, baseURL, token)
+	}
+	origin, err := config.BearerOriginForBaseURLAllowInsecure(baseURL)
+	if err != nil {
+		return err
+	}
+	c.Transport = config.BearerTransportWithPolicy(c.Transport, token, origin,
+		config.BearerPolicy{AllowInsecurePlaintext: true})
+	return nil
 }
 
 func newClaimHubHTTPClient(ctx context.Context, baseURL string) (*http.Client, error) {

@@ -105,6 +105,15 @@ func TestSyncFederationOncePullsAndAdvancesCursor(t *testing.T) {
 	assert.Equal(t, beforeSecondSync+1, afterSecondSync, "second sync should pull only the new hub event")
 }
 
+func TestClientOptsForCredentialPreservesAllowInsecureOptIn(t *testing.T) {
+	opts := clientOptsForCredential(clientpkg.Opts{}, config.FederationCredential{
+		AllowInsecure: true,
+	})
+
+	assert.True(t, opts.AllowInsecure)
+	assert.Equal(t, defaultClientTimeout, opts.Timeout)
+}
+
 func TestSyncFederationOnceDuplicateOnlyPullMaterializesStaleProjection(t *testing.T) {
 	ctx := context.Background()
 	hub := testenv.New(t)

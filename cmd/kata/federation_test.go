@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.kenn.io/kata/internal/api"
 	"go.kenn.io/kata/internal/config"
 	"go.kenn.io/kata/internal/db"
 	"go.kenn.io/kata/internal/testenv"
@@ -271,6 +272,19 @@ func TestFederationEnrollCLIPrintsJoinCommand(t *testing.T) {
 	assert.Contains(t, out, "--token ")
 }
 
+func TestFederationEnrollCLIPrintsAllowInsecureForPlaintextHostname(t *testing.T) {
+	env, dir, _ := setupCLIWorkspace(t)
+	runCLI(t, env, dir, "federation", "enable")
+	spokeUID := "01HZNQ7VFPK1XGD8R5MABCD4EF"
+
+	out := runCLI(t, env, dir, "federation", "enroll",
+		"--spoke-instance", spokeUID,
+		"--hub-url", "http://tailnet-hub.internal:7787")
+
+	assert.Contains(t, out, "--hub-url http://tailnet-hub.internal:7787")
+	assert.Contains(t, out, "--allow-insecure")
+}
+
 func TestFederationEnrollCLIRequiresPullCapabilityForJoinCommand(t *testing.T) {
 	env, dir, _ := setupCLIWorkspace(t)
 
@@ -394,6 +408,55 @@ func TestFederationJoinCLICreatesPushEnabledReplicaAndCredential(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "join-token", creds.Projects[project.UID].Token)
 	assert.Equal(t, "claim,pull,push", creds.Projects[project.UID].Capabilities)
+}
+
+func TestFederationJoinCLIPersistsAllowInsecureCredential(t *testing.T) {
+	env := testenv.New(t)
+	hubProjectUID := "01HZNQ7VFPK1XGD8R5MABCD4EG"
+
+	out := requireCmdOutput(t, env, "federation", "join",
+		"--project", "fedlab",
+		"--hub-url", "http://tailnet-hub.internal:7787",
+		"--hub-project-id", "42",
+		"--hub-project-uid", hubProjectUID,
+		"--replay-horizon", "7",
+		"--token", "join-token",
+		"--allow-insecure")
+
+	assert.Contains(t, out, "joined federation project fedlab")
+	creds, err := config.ReadFederationCredentials()
+	require.NoError(t, err)
+	got := creds.Projects[hubProjectUID]
+	assert.Equal(t, "http://tailnet-hub.internal:7787", got.HubURL)
+	assert.True(t, got.AllowInsecure)
+}
+
+func TestHydrateFederationJoinMetadataAllowsPlaintextHostnameWithOptIn(t *testing.T) {
+	orig := fetchFederationJoinMetadata
+	t.Cleanup(func() { fetchFederationJoinMetadata = orig })
+	fetchFederationJoinMetadata = func(_ context.Context, bundle federationJoinBundle) (api.ProjectFederationBody, error) {
+		assert.Equal(t, "http://tailnet-hub.internal:7787", bundle.HubURL)
+		assert.Equal(t, int64(42), bundle.HubProjectID)
+		assert.Equal(t, "join-token", bundle.Token)
+		assert.True(t, bundle.AllowInsecure)
+		return api.ProjectFederationBody{
+			ProjectID:              42,
+			ProjectUID:             "01HZNQ7VFPK1XGD8R5MABCD4EG",
+			ProjectName:            "fedlab",
+			ReplayHorizonEventID:   7,
+			BaselineThroughEventID: 9,
+		}, nil
+	}
+
+	bundle := federationJoinBundle{
+		HubURL:        "http://tailnet-hub.internal:7787",
+		HubProjectID:  42,
+		Token:         "join-token",
+		AllowInsecure: true,
+	}
+	err := hydrateFederationJoinMetadata(context.Background(), &bundle)
+	require.NoError(t, err)
+	assert.Equal(t, "01HZNQ7VFPK1XGD8R5MABCD4EG", bundle.HubProjectUID)
 }
 
 func TestFederationJoinCLIAdoptExistingOutput(t *testing.T) {

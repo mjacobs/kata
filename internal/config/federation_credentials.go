@@ -18,10 +18,11 @@ type FederationCredentials struct {
 // UID. Tokens intentionally live outside SQLite and outside committed
 // workspace config.
 type FederationCredential struct {
-	HubURL       string `toml:"hub_url"`
-	HubProjectID int64  `toml:"hub_project_id"`
-	Token        string `toml:"token"`
-	Capabilities string `toml:"capabilities,omitempty"`
+	HubURL        string `toml:"hub_url"`
+	HubProjectID  int64  `toml:"hub_project_id"`
+	Token         string `toml:"token"`
+	Capabilities  string `toml:"capabilities,omitempty"`
+	AllowInsecure bool   `toml:"allow_insecure,omitempty"`
 }
 
 // ReadFederationCredentials reads <KATA_HOME>/credentials.toml. Missing files

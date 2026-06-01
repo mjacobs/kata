@@ -190,6 +190,7 @@ func federationEnrollCmd() *cobra.Command {
 				Capabilities:           internalCaps,
 				DisplayCapabilities:    externalCaps,
 				PushEnabled:            federationCapabilitiesContain(internalCaps, "push"),
+				AllowInsecure:          federationHubURLNeedsAllowInsecure(hubURL),
 			}
 			return printFederationEnrollment(cmd, project.Name, spokeInstance, enrollment, bundle)
 		},
@@ -328,6 +329,7 @@ func federationJoinCmd() *cobra.Command {
 					"baseline_through_event_id": bundle.BaselineThroughEventID,
 					"token":                     bundle.Token,
 					"capabilities":              internalCaps,
+					"allow_insecure":            bundle.AllowInsecure,
 					"push_enabled":              bundle.PushEnabled,
 					"adopt_existing":            bundle.AdoptExisting,
 				})
@@ -350,6 +352,7 @@ func federationJoinCmd() *cobra.Command {
 	cmd.Flags().Int64Var(&bundle.BaselineThroughEventID, "baseline-through", 0, "baseline-through event ID")
 	cmd.Flags().StringVar(&bundle.Token, "token", "", "enrollment token")
 	cmd.Flags().StringVar(&bundle.DisplayCapabilities, "capabilities", "pull,push,lease", "comma-separated capabilities: pull,push,lease")
+	cmd.Flags().BoolVar(&bundle.AllowInsecure, "allow-insecure", false, "allow plaintext HTTP hub hostnames for private overlay networks")
 	cmd.Flags().BoolVar(&bundle.PushEnabled, "push", false, "enable spoke push")
 	cmd.Flags().BoolVar(&bundle.AdoptExisting, "adopt-existing", false, "adopt matching existing local data into the federation")
 	return cmd
@@ -408,20 +411,25 @@ type federationJoinBundle struct {
 	Token                  string `json:"token"`
 	Capabilities           string `json:"capabilities,omitempty"`
 	DisplayCapabilities    string `json:"-"`
+	AllowInsecure          bool   `json:"allow_insecure,omitempty"`
 	PushEnabled            bool   `json:"push_enabled,omitempty"`
 	AdoptExisting          bool   `json:"adopt_existing,omitempty"`
+}
+
+var fetchFederationJoinMetadata = func(ctx context.Context, bundle federationJoinBundle) (api.ProjectFederationBody, error) {
+	client, err := hubclient.NewClient(ctx, bundle.HubURL, bundle.Token,
+		clientpkg.Opts{Timeout: envHTTPTimeout(defaultHTTPTimeout), AllowInsecure: bundle.AllowInsecure})
+	if err != nil {
+		return api.ProjectFederationBody{}, err
+	}
+	return client.ProjectFederation(ctx, bundle.HubProjectID)
 }
 
 func hydrateFederationJoinMetadata(ctx context.Context, bundle *federationJoinBundle) error {
 	if bundle.HubProjectUID != "" && bundle.ReplayHorizonEventID > 0 {
 		return nil
 	}
-	client, err := hubclient.NewClient(ctx, bundle.HubURL, bundle.Token,
-		clientpkg.Opts{Timeout: envHTTPTimeout(defaultHTTPTimeout)})
-	if err != nil {
-		return err
-	}
-	metadata, err := client.ProjectFederation(ctx, bundle.HubProjectID)
+	metadata, err := fetchFederationJoinMetadata(ctx, *bundle)
 	if err != nil {
 		return err
 	}
@@ -728,6 +736,9 @@ func federationJoinCommand(bundle federationJoinBundle) string {
 	if bundle.PushEnabled {
 		args = append(args, "--push")
 	}
+	if bundle.AllowInsecure {
+		args = append(args, "--allow-insecure")
+	}
 	if bundle.AdoptExisting {
 		args = append(args, "--adopt-existing")
 	}
@@ -736,6 +747,14 @@ func federationJoinCommand(bundle federationJoinBundle) string {
 		quoted = append(quoted, shellQuote(arg))
 	}
 	return strings.Join(quoted, " ")
+}
+
+func federationHubURLNeedsAllowInsecure(raw string) bool {
+	if _, err := clientpkg.NormalizeRemoteURL(raw, false); err == nil {
+		return false
+	}
+	_, err := clientpkg.NormalizeRemoteURL(raw, true)
+	return err == nil
 }
 
 func invokedKataCommand() string {

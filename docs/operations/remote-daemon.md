@@ -63,6 +63,20 @@ RFC1918, CGNAT, link-local, or ULA. Public IPs and DNS hostnames are rejected
 for plaintext bearer auth. Use HTTPS through a reverse proxy or an SSH tunnel
 for those shapes.
 
+For private overlay hostnames where HTTPS is intentionally not used, clients can
+opt out per target with `KATA_ALLOW_INSECURE=1` or
+`[server].allow_insecure = true`. Federation hub enrollment tokens use their
+own credential store, so spokes opt in with `kata federation join
+--allow-insecure`.
+
+```toml
+version = 1
+
+[server]
+url = "http://hub.internal:7777"
+allow_insecure = true
+```
+
 Unix sockets, loopback HTTP, and HTTPS do not require the same private-network
 trust opt-in.
 

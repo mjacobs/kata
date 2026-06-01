@@ -210,10 +210,11 @@ func registerFederationHandlers(humaAPI huma.API, cfg ServerConfig) {
 		}
 		if in.Body.Token != "" {
 			if err := config.WriteFederationCredential(project.UID, config.FederationCredential{
-				HubURL:       in.Body.HubURL,
-				HubProjectID: in.Body.HubProjectID,
-				Token:        in.Body.Token,
-				Capabilities: capabilities,
+				HubURL:        in.Body.HubURL,
+				HubProjectID:  in.Body.HubProjectID,
+				Token:         in.Body.Token,
+				Capabilities:  capabilities,
+				AllowInsecure: in.Body.AllowInsecure,
 			}); err != nil {
 				return nil, api.NewError(500, "internal", err.Error(), "", nil)
 			}
