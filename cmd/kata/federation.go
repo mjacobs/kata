@@ -109,7 +109,7 @@ func federationEnableCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			actor, _ := resolveActor(flags.As, nil)
+			actor, _ := resolveActor(ctx, flags.As, nil)
 			metadata, err := enableAndReadFederationMetadata(ctx, client, baseURL, project.ID, actor)
 			if err != nil {
 				return err
@@ -156,7 +156,7 @@ func federationEnrollCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			actor, _ := resolveActor(flags.As, nil)
+			actor, _ := resolveActor(ctx, flags.As, nil)
 			metadata, err := enableAndReadFederationMetadata(ctx, client, baseURL, project.ID, actor)
 			if err != nil {
 				return err
@@ -827,7 +827,7 @@ func runFederationQuarantineSkip(ctx context.Context, cmd *cobra.Command, id int
 	if err != nil {
 		return err
 	}
-	actor, _ := resolveActor(flags.As, nil)
+	actor, _ := resolveActor(ctx, flags.As, nil)
 	status, bs, err = httpDoJSONWithHeader(ctx, client, http.MethodPost,
 		fmt.Sprintf("%s/api/v1/projects/%d/federation/quarantine/%d/skip", baseURL, projectID, id),
 		map[string]string{"X-Kata-Confirm": confirm},

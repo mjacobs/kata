@@ -10,8 +10,9 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
+
+	gitcmd "go.kenn.io/kit/git/cmd"
 )
 
 // Exit codes per spec §4.7.
@@ -40,7 +41,7 @@ type BodySources struct {
 
 // gitUserFn is a function signature for resolveActor's git fallback so tests
 // can inject a stub instead of touching the real `git config user.name`.
-type gitUserFn func() (string, error)
+type gitUserFn func(context.Context) (string, error)
 
 // resolveBody returns the resolved body text. Mutually exclusive sources;
 // returns error otherwise. An explicit empty --body or --body-file is
@@ -94,7 +95,7 @@ func resolveBody(b BodySources, stdin io.Reader) (string, error) {
 // display names with spaces (e.g. "Wes McKinney"). Git user.name remains
 // in the chain as a final fallback for environments where $USER is unset
 // (some sandboxes / cron jobs) but git is configured.
-func resolveActor(flag string, gitUser gitUserFn) (string, string) {
+func resolveActor(ctx context.Context, flag string, gitUser gitUserFn) (string, string) {
 	if flag != "" {
 		return flag, "flag"
 	}
@@ -107,15 +108,17 @@ func resolveActor(flag string, gitUser gitUserFn) (string, string) {
 	if gitUser == nil {
 		gitUser = readGitUserName
 	}
-	if name, _ := gitUser(); name != "" {
+	if name, _ := gitUser(ctx); name != "" {
 		return name, "git"
 	}
 	return "anonymous", "fallback"
 }
 
-func readGitUserName() (string, error) {
-	cmd := exec.Command("git", "config", "user.name")
-	out, err := cmd.Output()
+func readGitUserName(ctx context.Context) (string, error) {
+	runner := gitcmd.New()
+	runner.NullGlobalConfig = false
+	runner.NoSystemConfig = false
+	out, err := runner.Output(ctx, "", "config", "user.name")
 	if err != nil {
 		return "", err
 	}

@@ -1,15 +1,19 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
+
+	gitcmd "go.kenn.io/kit/git/cmd"
+	gitremote "go.kenn.io/kit/git/remote"
+	gitrepo "go.kenn.io/kit/git/repo"
 )
 
 // NameChoice is the project name resolved by PickInitName.
@@ -27,7 +31,7 @@ var ErrNameConflict = errors.New(".kata.toml declares a different project name")
 var ErrNoNameSource = errors.New("cannot derive project name outside a workspace")
 
 // PickInitName decides the project name for kata init.
-func PickInitName(disc DiscoveredPaths, tomlCfg *ProjectConfig, inputName string, replace bool) (NameChoice, error) {
+func PickInitName(ctx context.Context, disc DiscoveredPaths, tomlCfg *ProjectConfig, inputName string, replace bool) (NameChoice, error) {
 	inputName = strings.TrimSpace(inputName)
 	switch {
 	case tomlCfg != nil && inputName != "" && tomlCfg.Project.Name != "" && tomlCfg.Project.Name != inputName:
@@ -40,7 +44,7 @@ func PickInitName(disc DiscoveredPaths, tomlCfg *ProjectConfig, inputName string
 	case inputName != "":
 		return validateNameChoice(inputName)
 	default:
-		name, err := DeriveProjectName(disc)
+		name, err := DeriveProjectName(ctx, disc)
 		if err != nil {
 			return NameChoice{}, err
 		}
@@ -67,9 +71,9 @@ func PickName(explicit, identity string) string {
 // DeriveProjectName derives the default project name for init from the
 // discovered workspace. Git remotes use the last normalized remote segment;
 // local workspaces use the directory name.
-func DeriveProjectName(d DiscoveredPaths) (string, error) {
+func DeriveProjectName(ctx context.Context, d DiscoveredPaths) (string, error) {
 	if d.GitRoot != "" {
-		remote, err := readGitRemote(d.GitRoot)
+		remote, err := readGitRemote(ctx, d.GitRoot)
 		if err != nil {
 			return "", err
 		}
@@ -181,9 +185,9 @@ func walkUp(start, entry string, allowDir bool) (string, error) {
 // 2. GitRoot without remote → local://<abs(GitRoot)>
 // 3. WorkspaceRoot only → local://<abs(WorkspaceRoot)>
 // 4. Neither → error
-func ComputeAliasIdentity(d DiscoveredPaths) (AliasInfo, error) {
+func ComputeAliasIdentity(ctx context.Context, d DiscoveredPaths) (AliasInfo, error) {
 	if d.GitRoot != "" {
-		remote, err := readGitRemote(d.GitRoot)
+		remote, err := readGitRemote(ctx, d.GitRoot)
 		if err != nil {
 			return AliasInfo{}, err
 		}
@@ -212,12 +216,11 @@ func ComputeAliasIdentity(d DiscoveredPaths) (AliasInfo, error) {
 
 // readGitRemote returns the URL of "origin" (or the first remote listed by
 // `git remote` when no origin exists). Returns ("", nil) if no remotes.
-func readGitRemote(gitRoot string) (string, error) {
-	out, err := runGit(gitRoot, "remote")
+func readGitRemote(ctx context.Context, gitRoot string) (string, error) {
+	remotes, err := gitrepo.ListRemotes(ctx, gitRoot)
 	if err != nil {
 		return "", fmt.Errorf("git remote: %w", err)
 	}
-	remotes := strings.Fields(strings.TrimSpace(out))
 	if len(remotes) == 0 {
 		return "", nil
 	}
@@ -232,23 +235,14 @@ func readGitRemote(gitRoot string) (string, error) {
 	if !hasOrigin {
 		target = remotes[0]
 	}
-	url, err := runGit(gitRoot, "remote", "get-url", target)
+	out, err := gitRunner.Output(ctx, gitRoot, "remote", "get-url", target)
 	if err != nil {
 		return "", fmt.Errorf("git remote get-url %s: %w", target, err)
 	}
-	return strings.TrimSpace(url), nil
+	return strings.TrimSpace(string(out)), nil
 }
 
-func runGit(dir string, args ...string) (string, error) {
-	//nolint:gosec // git binary is fixed; args are caller-supplied subcommand flags.
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	return string(out), err
-}
-
-// scpLikeRE matches "user@host:path[/...]" SCP-style git URLs.
-var scpLikeRE = regexp.MustCompile(`^([^@\s]+)@([^:\s]+):(.+)$`)
+var gitRunner = gitcmd.New()
 
 // NormalizeRemoteURL strips credentials, normalizes SSH↔HTTPS, drops trailing
 // .git, and returns "host/path" form (e.g. "github.com/wesm/kata").
@@ -260,25 +254,13 @@ func NormalizeRemoteURL(raw string) (string, error) {
 	if raw == "" {
 		return "", fmt.Errorf("empty remote url")
 	}
-	var result string
-	if m := scpLikeRE.FindStringSubmatch(raw); m != nil {
-		host := m[2]
-		path := strings.TrimSuffix(m[3], ".git")
-		result = host + "/" + path
-	} else {
-		u, err := url.Parse(raw)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			return "", fmt.Errorf("parse remote url %q: not a recognized form", raw)
-		}
-		host := u.Host
-		if at := strings.LastIndex(host, "@"); at >= 0 {
-			host = host[at+1:]
-		}
-		path := strings.TrimSuffix(strings.TrimPrefix(u.Path, "/"), ".git")
-		if path == "" {
-			return host, nil
-		}
-		result = host + "/" + path
+	host := gitremote.RemoteHost(raw)
+	if host == "" {
+		return "", fmt.Errorf("parse remote url %q: not a recognized form", raw)
+	}
+	result := host
+	if path := gitremote.RemoteRepoPath(raw); path != "" {
+		result += "/" + path
 	}
 	if decoded, err := url.PathUnescape(result); err == nil {
 		result = decoded

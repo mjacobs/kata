@@ -26,6 +26,7 @@ import (
 	"go.kenn.io/kata/internal/api"
 	"go.kenn.io/kata/internal/config"
 	"go.kenn.io/kata/internal/db"
+	gitcmd "go.kenn.io/kit/git/cmd"
 	"pgregory.net/rapid"
 )
 
@@ -34,6 +35,7 @@ const federationStressPullInterval = 25 * time.Millisecond
 type federationStressTB interface {
 	Helper()
 	Name() string
+	Context() context.Context
 	Logf(format string, args ...any)
 	Errorf(format string, args ...any)
 	Fatalf(format string, args ...any)
@@ -813,9 +815,8 @@ func newFederationStressDirs(t federationStressTB) e2eDirs {
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	t.Cleanup(func() { _ = os.RemoveAll(repoDir) })
 	t.Cleanup(func() { _ = os.RemoveAll(xdg) })
-	require.NoError(t, exec.Command("git", "-C", repoDir, "init", "--quiet").Run()) //nolint:gosec // fixed args, test-only
-	require.NoError(t, exec.Command("git", "-C", repoDir,
-		"remote", "add", "origin", "https://github.com/wesm/kata-e2e.git").Run()) //nolint:gosec // fixed args, test-only
+	runFederationStressGit(t, repoDir, "init", "--quiet")
+	runFederationStressGit(t, repoDir, "remote", "add", "origin", "https://github.com/wesm/kata-e2e.git")
 	return e2eDirs{
 		home:    home,
 		repoDir: repoDir,
@@ -824,6 +825,12 @@ func newFederationStressDirs(t federationStressTB) e2eDirs {
 		script:  filepath.Join(home, "hook.sh"),
 		xdgDir:  xdg,
 	}
+}
+
+func runFederationStressGit(t federationStressTB, dir string, args ...string) {
+	t.Helper()
+	stdout, stderr, err := gitcmd.New().Run(t.Context(), dir, nil, args...)
+	require.NoErrorf(t, err, "git %v: %s%s", args, stdout, stderr)
 }
 
 func stressConnectDaemon(t federationStressTB, d e2eDirs, daemonStderr *safeBuffer) (string, *http.Client) {

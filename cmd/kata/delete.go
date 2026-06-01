@@ -122,7 +122,7 @@ func resolveConfirm(cmd *cobra.Command, flagVal, expected, prompt string,
 func runDestructive(cmd *cobra.Command, baseURL string, pid int64, pathRef, displayRef, verb, confirm string,
 	extraBody map[string]any) error {
 	ctx := cmd.Context()
-	actor, _ := resolveActor(flags.As, nil)
+	actor, _ := resolveActor(ctx, flags.As, nil)
 	// Build body from extraBody first so a future caller can't overwrite the
 	// resolved actor with a stray map key.
 	body := map[string]any{}

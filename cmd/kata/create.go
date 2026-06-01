@@ -96,7 +96,7 @@ func newCreateCmd() *cobra.Command {
 			}
 			return &cliError{Message: err.Error(), Kind: kindForExit(code), ExitCode: code}
 		}
-		actor, _ := resolveActor(flags.As, nil)
+		actor, _ := resolveActor(ctx, flags.As, nil)
 		client, err := httpClientFor(ctx, baseURL)
 		if err != nil {
 			return err
@@ -287,7 +287,7 @@ func resolveProjectID(ctx context.Context, baseURL, startPath string) (int64, er
 //     convention from git remotes — resolve never creates).
 //  4. Neither → {start_path}. Legacy local-only fallback.
 func resolveProjectIDAndName(ctx context.Context, baseURL, startPath string) (int64, string, error) {
-	body, repair, err := buildResolveRequest(startPath)
+	body, repair, err := buildResolveRequest(ctx, startPath)
 	if err != nil {
 		return 0, "", err
 	}
@@ -322,7 +322,7 @@ func resolveProjectIDAndName(ctx context.Context, baseURL, startPath string) (in
 
 // buildResolveRequest selects the wire shape for a resolve and returns
 // an optional callback for client-side .kata.toml repair on rename.
-func buildResolveRequest(startPath string) (map[string]any, func(string) error, error) {
+func buildResolveRequest(ctx context.Context, startPath string) (map[string]any, func(string) error, error) {
 	body := map[string]any{}
 
 	if project := strings.TrimSpace(flags.Project); project != "" {
@@ -369,7 +369,7 @@ func buildResolveRequest(startPath string) (map[string]any, func(string) error, 
 	// fix it instead of seeing an opaque daemon stat error.
 	var alias *config.AliasInfo
 	if disc.GitRoot != "" || disc.WorkspaceRoot != "" {
-		info, derr := config.ComputeAliasIdentity(disc)
+		info, derr := config.ComputeAliasIdentity(ctx, disc)
 		switch {
 		case derr == nil:
 			alias = &info

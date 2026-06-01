@@ -154,7 +154,7 @@ func callInit(ctx context.Context, baseURL, startPath string, opts callInitOpts)
 	if opts.Project == "" {
 		opts.Project = flags.Project
 	}
-	derived, err := localDerive(startPath, opts)
+	derived, err := localDerive(ctx, startPath, opts)
 	switch {
 	case err == nil:
 		return runNameInit(ctx, baseURL, derived, opts)
@@ -197,7 +197,7 @@ type localInit struct {
 // callInit can dispatch on them. Alias metadata is computed
 // best-effort: when the workspace can't yield an alias, the daemon
 // still gets name but no alias attach happens.
-func localDerive(startPath string, opts callInitOpts) (localInit, error) {
+func localDerive(ctx context.Context, startPath string, opts callInitOpts) (localInit, error) {
 	disc, err := config.DiscoverPaths(startPath)
 	if err != nil {
 		return localInit{}, err
@@ -216,11 +216,11 @@ func localDerive(startPath string, opts callInitOpts) (localInit, error) {
 			return localInit{}, err
 		}
 	}
-	choice, err := config.PickInitName(disc, tomlCfg, opts.Project, opts.Replace)
+	choice, err := config.PickInitName(ctx, disc, tomlCfg, opts.Project, opts.Replace)
 	if err != nil {
 		return localInit{}, err
 	}
-	alias, err := computeAliasInfo(disc, startPath)
+	alias, err := computeAliasInfo(ctx, disc, startPath)
 	if err != nil {
 		return localInit{}, err
 	}
@@ -239,11 +239,11 @@ func localDerive(startPath string, opts callInitOpts) (localInit, error) {
 // nor a .kata.toml ancestor, we synthesize a workspace root at the
 // start path so ComputeAliasIdentity has something to anchor on
 // (matching the path-based local:// fallback).
-func computeAliasInfo(disc config.DiscoveredPaths, startPath string) (*config.AliasInfo, error) {
+func computeAliasInfo(ctx context.Context, disc config.DiscoveredPaths, startPath string) (*config.AliasInfo, error) {
 	if disc.GitRoot == "" && disc.WorkspaceRoot == "" {
 		disc.WorkspaceRoot = startPath
 	}
-	info, err := config.ComputeAliasIdentity(disc)
+	info, err := config.ComputeAliasIdentity(ctx, disc)
 	if err != nil {
 		return nil, err
 	}

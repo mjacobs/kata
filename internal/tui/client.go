@@ -197,7 +197,7 @@ func (c *Client) EditBody(
 // returns a canonical name that differs from the local .kata.toml, the
 // client rewrites the file in place.
 func (c *Client) ResolveProject(ctx context.Context, startPath string) (*ResolveResp, error) {
-	req, repair, err := buildResolveRequest(startPath)
+	req, repair, err := buildResolveRequest(ctx, startPath)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func (c *Client) ResolveProject(ctx context.Context, startPath string) (*Resolve
 // buildResolveRequest selects the resolve wire shape and returns an
 // optional callback that rewrites .kata.toml when the daemon's
 // canonical name differs from the local binding.
-func buildResolveRequest(startPath string) (map[string]any, func(string) error, error) {
+func buildResolveRequest(ctx context.Context, startPath string) (map[string]any, func(string) error, error) {
 	disc, err := config.DiscoverPaths(startPath)
 	if err != nil {
 		// Path doesn't exist locally — pass through to start_path so
@@ -247,7 +247,7 @@ func buildResolveRequest(startPath string) (map[string]any, func(string) error, 
 
 	var alias *config.AliasInfo
 	if disc.GitRoot != "" || disc.WorkspaceRoot != "" {
-		info, derr := config.ComputeAliasIdentity(disc)
+		info, derr := config.ComputeAliasIdentity(ctx, disc)
 		switch {
 		case derr == nil:
 			alias = &info

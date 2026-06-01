@@ -1,6 +1,6 @@
 module go.kenn.io/kata
 
-go 1.26
+go 1.26.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
@@ -18,8 +18,9 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/teambition/rrule-go v1.8.2
-	golang.org/x/sys v0.43.0
-	golang.org/x/term v0.42.0
+	go.kenn.io/kit v0.1.0
+	golang.org/x/sys v0.44.0
+	golang.org/x/term v0.43.0
 	golang.org/x/text v0.36.0
 	modernc.org/sqlite v1.49.1
 	pgregory.net/rapid v1.3.0
