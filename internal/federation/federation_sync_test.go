@@ -1624,6 +1624,7 @@ func TestFederationRunnerRetriesAfterSyncError(t *testing.T) {
 	hub := testenv.New(t)
 	spoke := testenv.New(t)
 	t.Setenv("KATA_HOME", t.TempDir())
+	offlineHubURL := fastFailHubURL(t)
 	hubProject := createFederatedHubForPush(t, hub)
 	created, err := hub.DB.CreateFederationEnrollment(ctx, db.CreateFederationEnrollmentParams{ //nolint:gosec // test-only bearer token
 		Token:            "runner-retry-token",
@@ -1637,7 +1638,7 @@ func TestFederationRunnerRetriesAfterSyncError(t *testing.T) {
 	_, err = spoke.DB.UpsertFederationBinding(ctx, db.FederationBinding{
 		ProjectID:            spokeProject.ID,
 		Role:                 db.FederationRoleSpoke,
-		HubURL:               "http://127.0.0.1:1",
+		HubURL:               offlineHubURL,
 		HubProjectID:         hubProject.ID,
 		HubProjectUID:        hubProject.UID,
 		ReplayHorizonEventID: 1,
@@ -1646,7 +1647,7 @@ func TestFederationRunnerRetriesAfterSyncError(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, config.WriteFederationCredential(spokeProject.UID, config.FederationCredential{
-		HubURL:       "http://127.0.0.1:1",
+		HubURL:       offlineHubURL,
 		HubProjectID: hubProject.ID,
 		Token:        created.Token,
 	}))
@@ -2163,6 +2164,24 @@ func createFederatedHubForPush(t *testing.T, env *testenv.Env) db.Project {
 	_, err = env.DB.EnableProjectFederation(ctx, project.ID, "tester")
 	require.NoError(t, err)
 	return project
+}
+
+func fastFailHubURL(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "hijacking unsupported", http.StatusInternalServerError)
+			return
+		}
+		conn, _, err := hijacker.Hijack()
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
 }
 
 func postJSON(t *testing.T, baseURL, path string, body, out any) {

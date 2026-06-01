@@ -868,6 +868,7 @@ func TestClaimForwardCrossOriginRedirectDoesNotReachRedirectTarget(t *testing.T)
 func TestPendingClaimOfflineAcquireEnqueuesAndReleaseDoesNotClearCache(t *testing.T) {
 	ctx := context.Background()
 	hub, spoke, hubProject, spokeProject, issue, token := createClaimForwardingPair(t, "claim")
+	offlineHubURL := fastFailClaimHubURL(t)
 	require.NoError(t, config.WriteFederationCredential(spokeProject.UID, config.FederationCredential{
 		HubURL:       hub.URL,
 		HubProjectID: hubProject.ID,
@@ -885,7 +886,7 @@ func TestPendingClaimOfflineAcquireEnqueuesAndReleaseDoesNotClearCache(t *testin
 	require.True(t, acquired.Granted)
 
 	require.NoError(t, config.WriteFederationCredential(spokeProject.UID, config.FederationCredential{
-		HubURL:       "http://127.0.0.1:1",
+		HubURL:       offlineHubURL,
 		HubProjectID: hubProject.ID,
 		Token:        token,
 		Capabilities: "claim",
@@ -920,8 +921,9 @@ func TestPendingClaimOfflineAcquireEnqueuesAndReleaseDoesNotClearCache(t *testin
 func TestPendingClaimOfflineAcquireDuplicateReturnsExistingRequest(t *testing.T) {
 	ctx := context.Background()
 	_, spoke, hubProject, spokeProject, issue, token := createClaimForwardingPair(t, "claim")
+	offlineHubURL := fastFailClaimHubURL(t)
 	require.NoError(t, config.WriteFederationCredential(spokeProject.UID, config.FederationCredential{
-		HubURL:       "http://127.0.0.1:1",
+		HubURL:       offlineHubURL,
 		HubProjectID: hubProject.ID,
 		Token:        token,
 		Capabilities: "claim",
@@ -1131,6 +1133,24 @@ func claimActionPath(projectID int64, ref, action string) string {
 		action = "acquire"
 	}
 	return issuePathRef(projectID, ref, "lease/actions/"+action)
+}
+
+func fastFailClaimHubURL(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "hijacking unsupported", http.StatusInternalServerError)
+			return
+		}
+		conn, _, err := hijacker.Hijack()
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
 }
 
 func claimStatusPath(projectID int64, ref string) string {
