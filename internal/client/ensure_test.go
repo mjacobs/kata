@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/daemon"
+	kitdaemon "go.kenn.io/kit/daemon"
 )
 
 func TestEnsureRunningRestartsWhenDaemonVersionDiffers(t *testing.T) {
@@ -138,9 +139,9 @@ func TestStopRunningDaemonsSignalsVerifiedIncompatibleRuntime(t *testing.T) {
 	require.NoError(t, err)
 
 	origSignal := signalDaemonStopForEnsure
-	var signaled daemon.RuntimeRecord
+	var signaled kitdaemon.RuntimeRecord
 	var signaledDBHash string
-	signalDaemonStopForEnsure = func(rec daemon.RuntimeRecord, dbhash string) error {
+	signalDaemonStopForEnsure = func(rec kitdaemon.RuntimeRecord, dbhash string) error {
 		signaled = rec
 		signaledDBHash = dbhash
 		return os.Remove(filepath.Join(ns.DataDir, fmt.Sprintf("daemon.%d.json", rec.PID)))
@@ -166,7 +167,7 @@ func TestStopRunningDaemonsReturnsSignalError(t *testing.T) {
 	require.NoError(t, err)
 
 	origSignal := signalDaemonStopForEnsure
-	signalDaemonStopForEnsure = func(daemon.RuntimeRecord, string) error {
+	signalDaemonStopForEnsure = func(kitdaemon.RuntimeRecord, string) error {
 		return assert.AnError
 	}
 	t.Cleanup(func() { signalDaemonStopForEnsure = origSignal })
@@ -239,10 +240,10 @@ func writeRuntimeRecordForPID(t *testing.T, home string, pid int, addr string) e
 	if err := ns.EnsureDirs(); err != nil {
 		return err
 	}
-	_, err = daemon.WriteRuntimeFile(ns.DataDir, daemon.RuntimeRecord{
+	_, err = (kitdaemon.RuntimeStore{Dir: ns.DataDir}).Write(kitdaemon.RuntimeRecord{
 		PID:       pid,
 		Address:   addr,
-		DBPath:    filepath.Join(home, "kata.db"),
+		Metadata:  map[string]string{"db_path": filepath.Join(home, "kata.db")},
 		StartedAt: time.Now().UTC(),
 	})
 	return err
