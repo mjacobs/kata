@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/db/sqlitestore"
 	"go.kenn.io/kata/internal/jsonl"
 )
 
@@ -30,6 +31,24 @@ func TestExportWritesOrderedRecordsWithSequenceLast(t *testing.T) {
 	assert.Equal(t, "sqlite_sequence", records[len(records)-1]["kind"])
 
 	assertKindOrder(t, records)
+}
+
+func TestExportReadOnlyLegacySQLiteUsesVersionAwareExporter(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "kata.db")
+	writeLegacyV1DB(t, path)
+	source, err := sqlitestore.Open(ctx, path, db.ReadOnly())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = source.Close() })
+
+	var out bytes.Buffer
+	require.NoError(t, jsonl.Export(ctx, source, &out, jsonl.ExportOptions{IncludeDeleted: true}))
+	records := decodeJSONLLines(t, out.Bytes())
+
+	require.NotEmpty(t, records)
+	assert.Equal(t, map[string]any{"key": "export_version", "value": "1"}, records[0]["data"])
+	assertRecordsContain(t, records, "legacy issue")
+	assertRecordsContain(t, records, "legacy comment")
 }
 
 func TestExportEmitsEventPayloadAsJSONObject(t *testing.T) {
@@ -137,35 +156,6 @@ func indexOfKind(kinds []string, want string) int {
 		}
 	}
 	return -1
-}
-
-func TestExportLegacyV1OmitsUIDFields(t *testing.T) {
-	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	writeLegacyV1DB(t, path)
-	d, err := db.OpenReadOnly(ctx, path)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = d.Close() })
-
-	records := exportAndDecode(ctx, t, d, jsonl.ExportOptions{IncludeDeleted: true})
-
-	assert.Equal(t, map[string]any{"key": "export_version", "value": "1"}, records[0]["data"])
-	for _, rec := range records {
-		data, _ := rec["data"].(map[string]any)
-		switch rec["kind"] {
-		case "project", "issue":
-			assert.NotContains(t, data, "uid")
-		case "link":
-			assert.NotContains(t, data, "from_issue_uid")
-			assert.NotContains(t, data, "to_issue_uid")
-		case "event":
-			assert.NotContains(t, data, "issue_uid")
-			assert.NotContains(t, data, "related_issue_uid")
-		case "purge_log":
-			assert.NotContains(t, data, "issue_uid")
-			assert.NotContains(t, data, "project_uid")
-		}
-	}
 }
 
 func TestExportProjectIDFiltersProjectScopedRows(t *testing.T) {
@@ -503,9 +493,10 @@ func TestExportNoIncludeDeletedDropsFederatedEventForSoftDeletedIssueUID(t *test
 	}
 }
 
-func openExportTestDB(t *testing.T) *db.DB {
+func openExportTestDB(t *testing.T) *sqlitestore.Store {
 	t.Helper()
-	d, err := db.Open(context.Background(), filepath.Join(t.TempDir(), "kata.db"))
+	t.Setenv("KATA_HOME", t.TempDir())
+	d, err := sqlitestore.Open(context.Background(), filepath.Join(t.TempDir(), "kata.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = d.Close() })
 	return d
@@ -513,7 +504,7 @@ func openExportTestDB(t *testing.T) *db.DB {
 
 // newExportEnv opens a fresh test DB and seeds the canonical "kata" project
 // used by most export tests.
-func newExportEnv(t *testing.T) (context.Context, *db.DB, db.Project) {
+func newExportEnv(t *testing.T) (context.Context, *sqlitestore.Store, db.Project) {
 	t.Helper()
 	ctx := context.Background()
 	d := openExportTestDB(t)
@@ -524,7 +515,7 @@ func newExportEnv(t *testing.T) (context.Context, *db.DB, db.Project) {
 
 // exportAndDecode runs jsonl.Export into a buffer and decodes the resulting
 // JSONL stream into records.
-func exportAndDecode(ctx context.Context, t *testing.T, d *db.DB, opts jsonl.ExportOptions) []map[string]any {
+func exportAndDecode(ctx context.Context, t *testing.T, d *sqlitestore.Store, opts jsonl.ExportOptions) []map[string]any {
 	t.Helper()
 	var out bytes.Buffer
 	require.NoError(t, jsonl.Export(ctx, d, &out, opts))
@@ -538,6 +529,18 @@ func assertRecordsDoNotContain(t *testing.T, records []map[string]any, needle st
 		require.NoError(t, err)
 		assert.NotContains(t, string(bs), needle)
 	}
+}
+
+func assertRecordsContain(t *testing.T, records []map[string]any, needle string) {
+	t.Helper()
+	for _, rec := range records {
+		bs, err := json.Marshal(rec)
+		require.NoError(t, err)
+		if strings.Contains(string(bs), needle) {
+			return
+		}
+	}
+	t.Fatalf("expected exported records to contain %q", needle)
 }
 
 func assertProjectIDs(t *testing.T, records []map[string]any, allowed map[int64]bool) {

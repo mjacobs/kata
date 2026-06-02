@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/db/storeopen"
 	"go.kenn.io/kata/internal/jsonl"
 )
 
@@ -131,7 +131,7 @@ func runKataJSONLImport(cmd *cobra.Command, input, target string, force, newInst
 			cleanupTmp()
 		}
 	}()
-	d, err := db.Open(cmd.Context(), tmpTarget)
+	d, err := storeopen.Open(cmd.Context(), tmpTarget)
 	if err != nil {
 		return err
 	}

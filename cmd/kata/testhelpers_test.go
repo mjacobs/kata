@@ -20,6 +20,7 @@ import (
 	"go.kenn.io/kata/internal/client"
 	"go.kenn.io/kata/internal/daemon"
 	"go.kenn.io/kata/internal/db"
+	"go.kenn.io/kata/internal/db/sqlitestore"
 	"go.kenn.io/kata/internal/testenv"
 	"go.kenn.io/kata/internal/version"
 	gitcmd "go.kenn.io/kit/git/cmd"
@@ -33,6 +34,15 @@ func setupKataEnv(t *testing.T) string {
 	t.Setenv("KATA_HOME", tmp)
 	t.Setenv("KATA_DB", filepath.Join(tmp, "kata.db"))
 	return tmp
+}
+
+// openKataTestDB opens a SQLite store at path.
+func openKataTestDB(t *testing.T, path string) *sqlitestore.Store {
+	t.Helper()
+	ctx := context.Background()
+	d, err := sqlitestore.Open(ctx, path)
+	require.NoError(t, err)
+	return d
 }
 
 // executeRoot runs the given cobra command with args and returns stdout. It

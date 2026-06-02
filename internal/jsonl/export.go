@@ -23,20 +23,11 @@ type exportQuerier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// Export writes a deterministic JSONL export of d to w.
-func Export(ctx context.Context, d *db.DB, w io.Writer, opts ExportOptions) error {
-	tx, err := d.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return fmt.Errorf("begin export snapshot: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := exportSnapshot(ctx, tx, w, opts); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit export snapshot: %w", err)
-	}
-	return nil
+// exportForCutover writes a deterministic JSONL export of a legacy SQLite
+// source DB. It is intentionally SQLite-bound because it reads pre-v10
+// databases through PRAGMA introspection and version-gated SELECT projections.
+func exportForCutover(ctx context.Context, d exportQuerier, w io.Writer, opts ExportOptions) error {
+	return exportSnapshot(ctx, d, w, opts)
 }
 
 func exportSnapshot(ctx context.Context, d exportQuerier, w io.Writer, opts ExportOptions) error {
