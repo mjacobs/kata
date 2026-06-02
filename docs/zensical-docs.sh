@@ -9,15 +9,13 @@ fi
 shift || true
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/.." && pwd)"
+docs_root="$script_dir"
 site_dir="${KATA_DOCS_SITE_DIR:-site}"
 
 if [[ -n "${VIRTUAL_ENV:-}" && -x "$VIRTUAL_ENV/bin/zensical" ]]; then
   zensical_bin="$VIRTUAL_ENV/bin/zensical"
-elif [[ -x "$repo_root/.venv/bin/zensical" ]]; then
-  zensical_bin="$repo_root/.venv/bin/zensical"
-elif [[ -x "$repo_root/docs/.venv/bin/zensical" ]]; then
-  zensical_bin="$repo_root/docs/.venv/bin/zensical"
+elif [[ -x "$docs_root/.venv/bin/zensical" ]]; then
+  zensical_bin="$docs_root/.venv/bin/zensical"
 elif command -v zensical >/dev/null 2>&1; then
   zensical_bin="zensical"
 else
@@ -42,10 +40,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-tmp_docs_name="$(cd "$repo_root" && mktemp -d zensical-public-docs.XXXXXX)"
-tmp_docs="$repo_root/$tmp_docs_name"
-tmp_config_base_name="$(cd "$repo_root" && mktemp .zensical-build.XXXXXX)"
-tmp_config_base="$repo_root/$tmp_config_base_name"
+tmp_docs_name="$(cd "$docs_root" && mktemp -d zensical-public-docs.XXXXXX)"
+tmp_docs="$docs_root/$tmp_docs_name"
+tmp_config_base_name="$(cd "$docs_root" && mktemp .zensical-build.XXXXXX)"
+tmp_config_base="$docs_root/$tmp_config_base_name"
 tmp_config="$tmp_config_base.toml"
 tmp_config_name="$tmp_config_base_name.toml"
 if [[ -e "$tmp_config" ]]; then
@@ -56,10 +54,12 @@ mv "$tmp_config_base" "$tmp_config"
 tmp_config_base=""
 
 (
-  cd "$repo_root/docs"
+  cd "$docs_root"
   tar \
     --exclude './.venv' \
     --exclude './site' \
+    --exclude './zensical-public-docs.*' \
+    --exclude './.zensical-build.*' \
     --exclude './.ruff_cache' \
     --exclude './.mypy_cache' \
     --exclude './superpowers' \
@@ -75,13 +75,13 @@ awk -v docs_dir="$tmp_docs_name" -v site_dir="$site_dir" '
     next
   }
   { print }
-' "$repo_root/docs/zensical.toml" > "$tmp_config"
+' "$docs_root/zensical.toml" > "$tmp_config"
 
 case "$command_name" in
   build)
-    (cd "$repo_root" && "$zensical_bin" build --strict --config-file "$tmp_config_name" "$@")
+    (cd "$docs_root" && "$zensical_bin" build --strict --config-file "$tmp_config_name" "$@")
     ;;
   serve)
-    (cd "$repo_root" && "$zensical_bin" serve --config-file "$tmp_config_name" "$@")
+    (cd "$docs_root" && "$zensical_bin" serve --config-file "$tmp_config_name" "$@")
     ;;
 esac
