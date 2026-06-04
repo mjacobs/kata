@@ -19,16 +19,18 @@ import (
 
 // initOptions holds the flags specific to `kata init`.
 type initOptions struct {
-	Project  string
-	Replace  bool
-	Reassign bool
+	Project    string
+	Replace    bool
+	Reassign   bool
+	WithAgents bool
 }
 
 // callInitOpts is the parameter bag passed to callInit.
 type callInitOpts struct {
-	Project  string
-	Replace  bool
-	Reassign bool
+	Project    string
+	Replace    bool
+	Reassign   bool
+	WithAgents bool
 }
 
 // cliError is a structured error that carries an exit code for main().
@@ -136,6 +138,7 @@ get committed.`,
 
 	cmd.Flags().BoolVar(&opts.Replace, "replace", false, "overwrite .kata.toml binding when it conflicts")
 	cmd.Flags().BoolVar(&opts.Reassign, "reassign", false, "move an existing alias to this project")
+	cmd.Flags().BoolVar(&opts.WithAgents, "with-agents", false, "write kata agent guidance into AGENTS.md in the workspace")
 
 	return cmd
 }
@@ -295,8 +298,15 @@ func runNameInit(ctx context.Context, baseURL string, in localInit, opts callIni
 	if err != nil {
 		warnGitignoreUpdate(err)
 	}
+	agentsChanged := false
+	if opts.WithAgents {
+		agentsChanged, err = applyAgentGuidance(dest)
+		if err != nil {
+			warnAgentsUpdate(err)
+		}
+	}
 
-	return formatInitOutput(bs, resp.Project.Name, dest, resp.Created, resp.Created || tomlChanged || gitignoreChanged)
+	return formatInitOutput(bs, resp.Project.Name, dest, resp.Created, resp.Created || tomlChanged || gitignoreChanged || agentsChanged)
 }
 
 // runStartPathInit is the fallback used when the client cannot derive a name
@@ -339,10 +349,17 @@ func runStartPathInit(ctx context.Context, baseURL, startPath string, opts callI
 	if err != nil {
 		warnGitignoreUpdate(err)
 	}
+	agentsChanged := false
+	if opts.WithAgents {
+		agentsChanged, err = applyAgentGuidance(gitignoreDir)
+		if err != nil {
+			warnAgentsUpdate(err)
+		}
+	}
 
 	// The path-based daemon flow writes workspace files remotely and exposes no
 	// local file-change bit today; project creation is the closest stable signal.
-	return formatInitOutput(bs, resp.Project.Name, gitignoreDir, resp.Created, resp.Created || gitignoreChanged)
+	return formatInitOutput(bs, resp.Project.Name, gitignoreDir, resp.Created, resp.Created || gitignoreChanged || agentsChanged)
 }
 
 func warnGitignoreUpdate(err error) {
@@ -350,6 +367,56 @@ func warnGitignoreUpdate(err error) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "kata: warning: could not update .gitignore: %v\n", err)
+}
+
+func warnAgentsUpdate(err error) {
+	if currentOutputMode() != outputHuman {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "kata: warning: could not update AGENTS.md: %v\n", err)
+}
+
+// warnBeadsConflict tells the user kata declined to edit a file in place
+// because it still carries a beads integration block, and points at the sidecar
+// proposal kata wrote instead. Suppressed in machine-output modes, matching
+// warnGitignoreUpdate.
+func warnBeadsConflict(originalPath, sidecarPath string) {
+	if currentOutputMode() != outputHuman {
+		return
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = ""
+	}
+	fmt.Fprint(os.Stderr, beadsConflictMessage(cwd, originalPath, sidecarPath))
+}
+
+// beadsConflictMessage builds the human hint for a declined in-place edit.
+// Paths are rendered relative to cwd when they sit under it, else absolute, so
+// the `mv` command is copy-pasteable no matter which directory init was invoked
+// from — the write destination is the workspace root, which need not be cwd.
+func beadsConflictMessage(cwd, originalPath, sidecarPath string) string {
+	label := filepath.Base(originalPath)
+	sidecar := displayPath(cwd, sidecarPath)
+	original := displayPath(cwd, originalPath)
+	return fmt.Sprintf(
+		"kata: %s still contains a beads integration block; left it untouched.\n"+
+			"      Wrote a migrated copy to %s (beads block removed, kata guidance added).\n"+
+			"      Review it, then `mv %s %s` to adopt — or delete it to keep the original.\n",
+		label, sidecar, shellQuote(sidecar), shellQuote(original))
+}
+
+// displayPath renders abs for a shell hint: relative to cwd when abs sits under
+// it, else abs unchanged. An empty or unusable cwd yields the absolute path.
+func displayPath(cwd, abs string) string {
+	if cwd == "" {
+		return abs
+	}
+	rel, err := filepath.Rel(cwd, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return abs
+	}
+	return rel
 }
 
 // postProjects POSTs the request and returns the raw response body on
@@ -496,4 +563,258 @@ func ensureGitignoreEntry(dir, entry string) (bool, error) {
 	default:
 		return false, err
 	}
+}
+
+// agentsBlockBegin and agentsBlockEnd delimit the section kata manages inside
+// an agent guidance file. They let init refresh kata's guidance in place across
+// re-runs without disturbing anything else a project keeps in that file.
+const (
+	agentsBlockBegin = "<!-- BEGIN KATA (managed by `kata init --with-agents`) -->"
+	agentsBlockEnd   = "<!-- END KATA -->"
+)
+
+// beadsBlockBeginPrefix and beadsBlockEnd match the integration block Beads
+// writes into AGENTS.md/CLAUDE.md. The begin marker carries a trailing
+// version/profile/hash, so we match on its prefix and scan to the end marker.
+const (
+	beadsBlockBeginPrefix = "<!-- BEGIN BEADS INTEGRATION"
+	beadsBlockEnd         = "<!-- END BEADS INTEGRATION -->"
+)
+
+// agentsProposalSuffix names the sidecar kata writes when it refuses to edit a
+// file in place because it still carries a beads integration block. The user
+// reviews it and moves it over the original when ready.
+const agentsProposalSuffix = ".kata-proposed"
+
+// agentsBlockBody is the guidance kata injects between the markers. It mirrors
+// the contract `kata quickstart` prints, kept short so it complements rather
+// than duplicates the full quickstart text.
+const agentsBlockBody = "## kata issue tracker\n\n" +
+	"This project uses [kata](https://github.com/kenn-io/kata) as its shared issue\n" +
+	"ledger. Run `kata quickstart` at the start of each session for the full agent\n" +
+	"contract. The short version:\n\n" +
+	"- Search before creating: `kata search \"<keywords>\" --agent`.\n" +
+	"- Prefer updating existing issues over duplicates (`kata comment`, `kata label add`, `kata edit`).\n" +
+	"- Default to `--agent` for ordinary reads and mutations; use `--json` only when a script needs structured data.\n" +
+	"- Close only verified work: `kata close <ref> --done --message \"<scope + verification>\" --commit <sha>`.\n" +
+	"- If work is incomplete, label `needs-review` and comment what remains rather than closing.\n" +
+	"- Never `kata delete` or `kata purge` without explicit user authorization.\n"
+
+// agentsManagedBlock returns the full marker-delimited block kata writes.
+func agentsManagedBlock() string {
+	return agentsBlockBegin + "\n" + agentsBlockBody + agentsBlockEnd
+}
+
+// applyAgentGuidance is the entry point for `--with-agents`. It writes kata's
+// block into AGENTS.md and, when migrating off beads, sidesteps a destructive
+// edit: if a file still carries a beads integration block, kata leaves it
+// untouched and writes a <file>.kata-proposed copy (beads block removed, kata
+// block added) for the user to adopt or discard. CLAUDE.md is only considered
+// in that conflict case, and only when it is a real file rather than a symlink
+// (kata's own convention points CLAUDE.md at AGENTS.md).
+func applyAgentGuidance(dir string) (bool, error) {
+	changed := false
+
+	agentsPath := filepath.Join(dir, "AGENTS.md")
+	// Refuse a symlinked AGENTS.md before reading it. Following the link would
+	// let a hostile repo copy an outside file's content into the workspace via
+	// the migration sidecar, or rewrite the link target. CLAUDE.md gets the same
+	// treatment through regularFileWithBeads.
+	if fi, lerr := os.Lstat(agentsPath); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return changed, fmt.Errorf("refusing to manage symlinked %s", agentsPath)
+	}
+	content, exists, err := readIfExists(agentsPath)
+	if err != nil {
+		return changed, err
+	}
+	if exists && hasBeadsBlock(content) {
+		sidecar, err := writeMigrationProposal(agentsPath, content)
+		if err != nil {
+			return changed, err
+		}
+		warnBeadsConflict(agentsPath, sidecar)
+		changed = true
+	} else {
+		c, err := ensureAgentsBlock(agentsPath, content, exists)
+		if err != nil {
+			return changed, err
+		}
+		changed = changed || c
+	}
+
+	claudePath := filepath.Join(dir, "CLAUDE.md")
+	if claude, ok := regularFileWithBeads(claudePath); ok {
+		sidecar, err := writeMigrationProposal(claudePath, claude)
+		if err != nil {
+			return changed, err
+		}
+		warnBeadsConflict(claudePath, sidecar)
+		changed = true
+	}
+
+	return changed, nil
+}
+
+// ensureAgentsBlock writes kata's block into an agent guidance file whose
+// current content is already known. It creates the file when absent, appends
+// the block when the file has no kata markers, and rewrites the block in place
+// when its content drifts. A begin marker with no matching end marker is an
+// error rather than a guessed span. Returns whether the file changed.
+func ensureAgentsBlock(path, content string, exists bool) (bool, error) {
+	updated, err := upsertKataBlock(content)
+	if err != nil {
+		return false, err
+	}
+	if exists && updated == content {
+		return false, nil
+	}
+	if exists {
+		if err := rewriteGuidanceFile(path, []byte(updated)); err != nil {
+			return false, err
+		}
+	} else if err := writeNewGuidanceFile(path, []byte(updated)); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// upsertKataBlock returns content with kata's managed block present: appended
+// (with a blank line of separation) when absent, or rewritten in place when a
+// stale block already exists. A non-empty result always ends with a newline.
+func upsertKataBlock(content string) (string, error) {
+	block := agentsManagedBlock()
+	begin := strings.Index(content, agentsBlockBegin)
+	if begin == -1 {
+		var prefix string
+		switch {
+		case len(content) == 0, strings.HasSuffix(content, "\n\n"):
+		case strings.HasSuffix(content, "\n"):
+			prefix = "\n"
+		default:
+			prefix = "\n\n"
+		}
+		return content + prefix + block + "\n", nil
+	}
+	rel := strings.Index(content[begin:], agentsBlockEnd)
+	if rel == -1 {
+		return "", fmt.Errorf("agent guidance file has %q without a matching %q", agentsBlockBegin, agentsBlockEnd)
+	}
+	end := begin + rel + len(agentsBlockEnd)
+	if content[begin:end] == block {
+		return content, nil
+	}
+	return content[:begin] + block + content[end:], nil
+}
+
+// writeMigrationProposal writes a <path><suffix> copy of an existing file with
+// the beads block stripped and kata's block added, leaving the original
+// untouched. Returns the sidecar path.
+func writeMigrationProposal(path, content string) (string, error) {
+	proposed, err := upsertKataBlock(stripBeadsBlock(content))
+	if err != nil {
+		return "", err
+	}
+	sidecar := path + agentsProposalSuffix
+	if err := writeNewGuidanceFile(sidecar, []byte(proposed)); err != nil {
+		return "", err
+	}
+	return sidecar, nil
+}
+
+// writeNewGuidanceFile creates path with data, refusing to follow a symlink a
+// hostile repo may have planted there. O_EXCL fails (EEXIST) when anything —
+// regular file or symlink — already occupies the path, so kata never redirects
+// its write onto a victim file the path merely points at.
+func writeNewGuidanceFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644) //nolint:gosec
+	if err != nil {
+		return err
+	}
+	_, werr := f.Write(data)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	return werr
+}
+
+// rewriteGuidanceFile overwrites an existing regular file, refusing to write
+// through a symlink so kata never rewrites a file the path merely points at.
+func rewriteGuidanceFile(path string, data []byte) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to write through symlinked %s", path)
+	}
+	return os.WriteFile(path, data, 0o644) //nolint:gosec
+}
+
+// hasBeadsBlock reports whether content carries a complete beads integration
+// block (both markers, in order).
+func hasBeadsBlock(content string) bool {
+	begin := strings.Index(content, beadsBlockBeginPrefix)
+	if begin == -1 {
+		return false
+	}
+	return strings.Contains(content[begin:], beadsBlockEnd)
+}
+
+// stripBeadsBlock removes the beads integration block and collapses the blank
+// space it leaves at the seam. Content without a complete block is returned
+// unchanged. A non-empty result ends with a newline.
+func stripBeadsBlock(content string) string {
+	begin := strings.Index(content, beadsBlockBeginPrefix)
+	if begin == -1 {
+		return content
+	}
+	rel := strings.Index(content[begin:], beadsBlockEnd)
+	if rel == -1 {
+		return content
+	}
+	end := begin + rel + len(beadsBlockEnd)
+	prefix := strings.TrimRight(content[:begin], "\n")
+	suffix := strings.TrimLeft(content[end:], "\n")
+	switch {
+	case prefix == "":
+		return suffix
+	case suffix == "":
+		return prefix + "\n"
+	default:
+		return prefix + "\n\n" + suffix
+	}
+}
+
+// readIfExists returns a file's content and whether it exists. A missing file
+// is reported as (",", false, nil); other read errors propagate.
+func readIfExists(path string) (string, bool, error) {
+	bs, err := os.ReadFile(path) //nolint:gosec
+	switch {
+	case err == nil:
+		return string(bs), true, nil
+	case errors.Is(err, os.ErrNotExist):
+		return "", false, nil
+	default:
+		return "", false, err
+	}
+}
+
+// regularFileWithBeads reports the content of path when it is a regular file
+// (not a symlink or directory) that carries a beads integration block. kata
+// skips symlinked CLAUDE.md so it never rewrites a file that merely points at
+// AGENTS.md.
+func regularFileWithBeads(path string) (string, bool) {
+	fi, err := os.Lstat(path)
+	if err != nil || fi.Mode()&os.ModeSymlink != 0 || fi.IsDir() {
+		return "", false
+	}
+	bs, err := os.ReadFile(path) //nolint:gosec
+	if err != nil {
+		return "", false
+	}
+	content := string(bs)
+	if !hasBeadsBlock(content) {
+		return "", false
+	}
+	return content, true
 }
